@@ -164,7 +164,10 @@ namespace BodyCum
                         reference = new SurfaceProjectionReference
                         {
                             VertexCount = source.vertexCount, TopologyHash = topology, MeshName = source.name,
-                            CaptureUntil = frame + PlacementWarmupFrames,
+                            // A restored Studio accessory can commit its first valid layout before drawing.
+                            CaptureUntil = slotKey.StartsWith("accessory/", StringComparison.Ordinal) &&
+                                Get(actor)?.RestoredAccessoryRoots?.Contains(root) == true
+                                ? -1 : frame + PlacementWarmupFrames,
                             MeshToAnchor = anchor.worldToLocalMatrix * drawMatrix,
                             Minimum = new Vector3(float.PositiveInfinity, float.PositiveInfinity, float.PositiveInfinity),
                             Maximum = new Vector3(float.NegativeInfinity, float.NegativeInfinity, float.NegativeInfinity)

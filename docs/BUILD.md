@@ -4,7 +4,7 @@ Run these commands from the repository root in [PowerShell 7](https://learn.micr
 
 ## Build with the 1.0 resources
 
-Get `BodyCum.dll` from the [1.0 release](https://github.com/Naruu6/BodyCum/releases/tag/v1.0.0). The importer checks the DLL and its six embedded resources against [resource-hashes.json](../resource-hashes.json).
+Get `BodyCum.dll` from the [1.0 Final release](https://github.com/Naruu6/BodyCum/releases/tag/v1.0.0-final). The importer checks the DLL and its six embedded resources against [resource-hashes.json](../resource-hashes.json).
 
 ```powershell
 pwsh -File .\Import-LocalResources.ps1 -PluginPath 'C:\Downloads\BodyCum.dll'

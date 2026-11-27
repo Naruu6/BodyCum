@@ -5,7 +5,7 @@ BodyCum runs in Koikatsu CharaStudio on Windows with Direct3D 11. Install [BepIn
 ## Install or update
 
 1. Close CharaStudio.
-2. Get `BodyCum.dll` from the [1.0 release](https://github.com/Naruu6/BodyCum/releases/tag/v1.0.0). If you're updating, back up your old DLL first.
+2. Get `BodyCum.dll` from the [latest release](https://github.com/Naruu6/BodyCum/releases/latest). If you're updating, back up your old DLL first.
 3. Put the DLL in `BepInEx/plugins` under your Koikatsu folder. Launch Studio, select a character, and open **Status → Juices**.
 
 BodyCum works alongside the original [SkinEffects](https://github.com/ManlyMarco/Illusion_SkinEffects). If your copy of `KK_SkinEffects.dll` already has BodyCum's controls built in, restore the original SkinEffects DLL first.
@@ -18,7 +18,7 @@ BodyCum works alongside the original [SkinEffects](https://github.com/ManlyMarco
 
 Character settings and surface placements are saved with the scene. Global defaults and the F1 master switch live in `BepInEx/config/koikatsu.bodycum.cfg`.
 
-Hair on a newly loaded character can take a moment to appear while the placement settles. Custom meshes with unusual UVs or transparency may look different.
+When you open a saved scene, the effect appears as soon as the hair accessory can be rendered. When you add or change a character, the hair effect may take a moment to appear. Custom meshes with unusual UVs or transparency may look different.
 
 ## Roll back
 

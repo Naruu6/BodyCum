@@ -6,7 +6,7 @@ BodyCum adds extra controls to **Status → Juices** in Koikatsu CharaStudio. Se
 
 ## Get started
 
-1. Close CharaStudio and get `BodyCum.dll` from the [1.0 release](https://github.com/Naruu6/BodyCum/releases/tag/v1.0.0).
+1. Close CharaStudio and get `BodyCum.dll` from the [latest release](https://github.com/Naruu6/BodyCum/releases/latest).
 2. Put it in `BepInEx/plugins` under your Koikatsu folder.
 3. Open CharaStudio, select a character, and go to **Status → Juices**.
 

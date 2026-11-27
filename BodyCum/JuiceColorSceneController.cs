@@ -106,7 +106,7 @@ namespace BodyCum
                 {
                     var profile = HairJuiceProfile.Deserialize(hairData);
                     if (profile != null)
-                        hair.Set(character, profile);
+                        hair.RestoreAccessoryProfile(character, profile);
                 }
                 if (data.data.TryGetValue(RegularHairKey(entry.Key), out value) && value is byte[] regularHairData)
                 {

@@ -1,6 +1,7 @@
 using System;
 using System.Collections.Generic;
 using System.IO;
+using UnityEngine;
 
 namespace BodyCum
 {
@@ -16,6 +17,7 @@ namespace BodyCum
         internal int Size = DefaultSize;
 
         internal readonly Dictionary<int, string> Slots = new Dictionary<int, string>();
+        internal HashSet<Transform> RestoredAccessoryRoots;
 
         internal bool HasValues => Level != 0 || Horizontal != 0 || Vertical != 0 || Size != DefaultSize || Slots.Count != 0;
 

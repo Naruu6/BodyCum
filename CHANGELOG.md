@@ -1,5 +1,10 @@
 # Changelog
 
+## 1.0 Final
+
+- Hair accessory effects appear on the first rendered frame after a Studio scene loads. Older scenes with no saved placement calculate it on that frame, and scenes with a saved placement reuse it.
+- Tested scene reloads with and without saved placement in CharaStudio. The recorded placement stayed stable after the effect first appeared.
+
 ## 1.0.0
 
 - Overlapping strands on hair accessories get a small sideways shift so the pattern stays close to the original frontal placement.

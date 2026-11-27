@@ -79,6 +79,19 @@ namespace BodyCum
         internal void Set(OCIChar character, HairJuiceProfile profile) => _profiles[character] = profile;
         internal void SetRegularHair(OCIChar character, HairJuiceProfile profile) => _regularHairProfiles[character] = profile;
 
+        internal void RestoreAccessoryProfile(OCIChar actor, HairJuiceProfile profile)
+        {
+            foreach (var slot in profile.Slots)
+            {
+                if (!TryGetAccessory(actor.charInfo, slot.Key, out var root, out var identity) || identity != slot.Value)
+                    continue;
+                if (profile.RestoredAccessoryRoots == null)
+                    profile.RestoredAccessoryRoots = new HashSet<Transform>();
+                profile.RestoredAccessoryRoots.Add(root.transform);
+            }
+            Set(actor, profile);
+        }
+
         internal HairJuiceProfile GetHairProfile(OCIChar character, bool regularHair)
         {
             var profiles = regularHair ? _regularHairProfiles : _profiles;
