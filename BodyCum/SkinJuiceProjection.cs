@@ -10,6 +10,7 @@ namespace BodyCum
         private const string SkinShaderAsset = "assets/skineffects/bodycum_skin.shader";
         private const string SkinShaderName = "SkinEffects/BodyCum Skin Projection";
         private const string SkinMaskTexture = "_SkinMask";
+        private static readonly int InnerBustGain = Shader.PropertyToID("_InnerBustGain");
         private readonly Dictionary<Renderer, HairMaterials> _skinLayers = new Dictionary<Renderer, HairMaterials>();
         private Shader _skinShader;
         private bool _attemptedSkinShader;
@@ -34,6 +35,7 @@ namespace BodyCum
                 var material = GetDrawMaterial(_skinLayers, _skinShader, renderer, layer.Index, frame);
                 material.SetVector(ProjectionX, layer.BodyTiers);
                 material.SetVector(ProjectionY, layer.FaceAndBelly);
+                material.SetVector(InnerBustGain, new Vector4(layer.InnerBustGain.x, layer.InnerBustGain.y, 0f, 0f));
                 SetSkinTexture(material, PatternTexture, layer.Pattern, layer.PatternTransform);
                 SetSkinTexture(material, SkinMaskTexture, layer.Mask, layer.MaskTransform);
                 SetSource(material, layer.Source, layer.Color, 0, layer.Density);

@@ -124,7 +124,7 @@ internal static class PatchKkutsJuiceShader
         Buffer.BlockCopy(data, shaderOffset, oldShader, 0, oldShader.Length);
         uint colorRow = (uint)originalGlobalsSize / 16;
         var newShader = Dxbc.EditProgram(oldShader, program => InjectInstructions(program, colorRow, variant, forwardBase, patternTexture));
-        Check(Dxbc.Disassemble(newShader).Contains("dcl_constantbuffer CB0[" + (colorRow + 2) + "], immediateIndexed"),
+        Check(Dxbc.Disassemble(newShader).Contains("dcl_constantbuffer CB0[" + (colorRow + 3) + "], immediateIndexed"),
             "Could not validate patched Direct3D instructions for variant " + variant);
 
         using (var result = new MemoryStream(data.Length + 512))
@@ -135,11 +135,12 @@ internal static class PatchKkutsJuiceShader
             writer.Write(data, encodedLengthOffset + 4, 6);
             writer.Write(newShader);
             writer.Write(data, shaderOffset + oldShaderSize, sizeOffset - shaderOffset - oldShaderSize);
-            writer.Write(originalGlobalsSize + 32);
-            writer.Write(parameterCount + 2);
+            writer.Write(originalGlobalsSize + 48);
+            writer.Write(parameterCount + 3);
             writer.Write(data, countOffset + 4, parameterEnd - countOffset - 4);
             WriteVectorParameter(writer, PropertyName, originalGlobalsSize);
             WriteVectorParameter(writer, DensityPropertyName, originalGlobalsSize + 16);
+            WriteVectorParameter(writer, "_BodyCumBustWarp", originalGlobalsSize + 32);
             writer.Write(data, parameterEnd, data.Length - parameterEnd);
             Console.WriteLine("Variant {0}: {1} -> {2} DXBC bytes; color cbuffer row {3}", variant, oldShader.Length, newShader.Length, colorRow);
             return result.ToArray();
@@ -155,7 +156,7 @@ internal static class PatchKkutsJuiceShader
         uint pigment = work + 1;
         uint output = work + 2;
         program[temps + 1] += 3 + AbdomenJuiceMask.TemporaryCount;
-        program[buffer + 3] = colorRow + 2;
+        program[buffer + 3] = colorRow + 3;
 
         int tintIndex = instructions.FindIndex(p => program[p] == 0x0F000032 && program[p + 3] == 0x00100FF6 &&
             program[p + 4] == 0 && program[p + 6] == 0x3EB33334 && program[p + 7] == 0x3EE7E7E6 &&
@@ -189,11 +190,8 @@ internal static class PatchKkutsJuiceShader
         var result = new List<uint>(program.Length + 200);
         var sampleRegister = work + 3;
         var nativeSample = AbdomenJuiceMask.FindNativeSample(program, patternTexture, patternTexture, normal);
-        result.AddRange(program.Take(nativeSample.Start));
-        AbdomenJuiceMask.SaveShiftedSample(result, program, nativeSample, colorRow + 1, sampleRegister);
-        result.AddRange(program.Skip(nativeSample.Start).Take(nativeSample.End - nativeSample.Start));
-        AbdomenJuiceMask.SaveNativeSample(result, nativeSample, sampleRegister);
-        result.AddRange(program.Skip(nativeSample.End).Take(normal - nativeSample.End));
+        var liquidEnd = AbdomenJuiceMask.EmitBodyPattern(result, program, nativeSample, colorRow + 1, sampleRegister);
+        result.AddRange(program.Skip(liquidEnd).Take(normal - liquidEnd));
         var coverage = AbdomenJuiceMask.ExtendCoverage(result, colorRow + 1, sampleRegister);
 
         // Remap the completed five-zone, two-tier mask monotonically. For m in [0,1],

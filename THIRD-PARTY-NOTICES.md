@@ -2,46 +2,21 @@
 
 ## Source code
 
-BodyCum was separated from a modified integration based on ManlyMarco's
-[Illusion_SkinEffects 3.0.2](https://github.com/ManlyMarco/Illusion_SkinEffects).
-The existing [GNU GPL version 3 license](LICENSE) is retained. Original
-copyrights remain with their respective holders. BodyCum is not an official
-ManlyMarco or IllusionMods release.
+BodyCum was separated from a modified integration based on ManlyMarco's [Illusion_SkinEffects 3.0.2](https://github.com/ManlyMarco/Illusion_SkinEffects). The original [GNU GPL version 3 license](LICENSE) is retained. Original copyrights remain with their respective holders.
 
-BodyCum's additions include character-specific controls, color and amount
-settings, belly and tongue controls, accessory/clothing slot controls,
-surface-following placement, and scene persistence. The GitHub preparation
-does not change the 1.0 plugin implementation.
+## Build and runtime components
 
-## External build and runtime components
-
-The following projects are referenced from a separately installed game or
-tool installation. Their binaries are not included in this source repository:
+BodyCum uses a separately installed copy of Koikatsu CharaStudio and these tools and plugins.
 
 - [BepInEx](https://github.com/BepInEx/BepInEx)
 - [Illusion Modding API / KKAPI](https://github.com/IllusionMods/IllusionModdingAPI)
 - [BepisPlugins / Extended Save](https://github.com/IllusionMods/BepisPlugins)
-- Unity and Koikatsu game assemblies
-- SB3Utility and its dependencies, for local shader rebuilding
-- Microsoft Roslyn or a .NET SDK, for compilation
+- Unity and Koikatsu assemblies
+- SB3Utility for building shader bundles
+- Microsoft Roslyn or the .NET SDK for compiling the plugin
 
-The code license does not replace these components' own licenses.
+## Rendering resources and artwork
 
-## Rendering resources
+The rendering inputs include material from the installed game and [nHaruka's KKUTS v2.3](https://ux.getuploader.com/nHaruka_KK/download/150). See [Rendering sources](docs/ASSET-PROVENANCE.md) for the resource list and its corresponding build inputs. The source-code license covers the BodyCum source. Third-party materials retain their own terms.
 
-The development DLL contains four shader bundles made using installed
-Koikatsu and nHaruka KKUTS inputs, plus an accessory mask edited using an
-exported game mask as a reference. The inspected files do not establish
-redistribution permission for those inputs. This is an unresolved provenance
-question, not a finding that the author has prohibited redistribution.
-
-The five resource binaries are therefore not included in the public source
-staging tree. The unchanged development DLL is also not staged as a public
-release asset. See [resource provenance](docs/ASSET-PROVENANCE.md) and
-[building](docs/BUILD.md).
-
-## Documentation artwork
-
-The cover is AI-generated artwork with separately typeset Gorvex lettering.
-The font file is not included. The source-code license does not grant rights
-to any third-party typeface, game assets, or character designs.
+The repository cover uses generated artwork and Gorvex lettering. The typeface remains subject to its own terms.

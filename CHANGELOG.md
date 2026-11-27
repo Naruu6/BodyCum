@@ -1,18 +1,13 @@
 # Changelog
 
-## 1.0.0 — Current baseline
+## 1.0.0
 
-Source publication is being prepared. No prebuilt release has been uploaded yet.
+- Reduced the horizontal pattern offset on overlapping hair accessory strands to one quarter of its previous value. This keeps the result closer to the frontal placement.
+- Hair and accessory patterns first appear when surface placement is ready. Existing scene coordinates are reused when the mesh matches.
+- Clothing slot selections follow the slot when its item changes. Stock bras and underwear use the original material's two-channel cutout rules. BodyCum controls the displayed clothing effect while the F1 master switch is enabled.
+- Regular hair, accessories, and clothing each have OFF, x1, and x2 levels. Their position and size controls are stored per character in the scene.
+- The established BodyCum ID and scene data remain compatible with earlier versions.
 
-- Per-character BodyCum switch and a separate F1 master switch.
-- Color, opacity, density, brightness, belly, tongue, accessory, and clothing controls.
-- All slots selection, individual slot selection, and X/Y/size adjustment.
-- Scene-saved surface placement that follows character movement.
-- Simplified controls: Custom, Gloss, Use defaults, and Reapply are absent; the enabled effect uses the former Custom ON / Gloss OFF behavior.
-- Existing scene color records and other setting keys are retained. Removed Custom/Gloss flags are ignored.
+The release was verified in CharaStudio with two long-hair accessories. The tests covered character loading and replacement, restoration of saved placement, and the absence of a second pattern shift after the effect first appeared.
 
-Plugin version: **1.0.0**. Assembly/file versions: **1.0.0.0**. Plugin ID: **`koikatsu.bodycum`**.
-
-The existing final baseline passed local compilation and static compatibility checks. Native Studio UI, rendering, and complete scene save/reload checks were not performed for that final baseline.
-
-Four shader bundles and the edited accessory mask are excluded from this repository pending resource provenance review. See [the build guide](docs/BUILD.md) and [third-party notices](THIRD-PARTY-NOTICES.md).
+Plugin version `1.0.0`. Assembly and file version `1.0.0.0`. Plugin ID `koikatsu.bodycum`.

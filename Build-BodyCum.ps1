@@ -19,8 +19,8 @@ $skinBundle = Join-Path $resources 'CustomJuiceColor.bundle'
 $tessBundle = Join-Path $resources 'CustomJuiceColor.KKUTS_Tess.bundle'
 $accessoryBundle = Join-Path $resources 'CustomJuiceColor.Hair.bundle'
 $surfaceBundle = Join-Path $resources 'CustomJuiceColor.Skin.bundle'
-$bundles = $skinBundle, $tessBundle, $accessoryBundle, $surfaceBundle
-$accessoryMask = Join-Path $resources 'AccessoryJuiceMask.png'
+$bakeBundle = Join-Path $resources 'CustomJuiceColor.BustBake.bundle'
+$bundles = $skinBundle, $tessBundle, $accessoryBundle, $surfaceBundle, $bakeBundle
 
 if (!$CompilerPath) {
     $null = Get-Command dotnet -ErrorAction Stop
@@ -45,6 +45,10 @@ if ($RebuildShaders -or !(Test-Path -LiteralPath $surfaceBundle -PathType Leaf))
     & (Join-Path $PSScriptRoot 'Build-HairJuiceShader.ps1') -GamePath $GamePath -Sb3UtilityPath $Sb3UtilityPath -OutputPath $surfaceBundle -Skin
 }
 
+if ($RebuildShaders -or !(Test-Path -LiteralPath $bakeBundle -PathType Leaf)) {
+    & (Join-Path $PSScriptRoot 'Build-HairJuiceShader.ps1') -GamePath $GamePath -Sb3UtilityPath $Sb3UtilityPath -OutputPath $bakeBundle -BustBake
+}
+
 function Find-InstalledAssembly([string]$Name, [string]$RelativePath) {
     $preferred = Join-Path $plugins $RelativePath
     if (Test-Path -LiteralPath $preferred -PathType Leaf) { return $preferred }
@@ -65,7 +69,7 @@ $output = New-Item -ItemType Directory -Path $OutputDirectory -Force
 $dll = Join-Path $output.FullName 'BodyCum.dll'
 $arguments = @('/noconfig', '/nologo', '/nostdlib+', '/target:library', '/optimize+', "/out:$dll")
 $arguments += $references | ForEach-Object { '/reference:' + (Resolve-Path -LiteralPath $_).Path }
-$arguments += ($bundles + $accessoryMask) | ForEach-Object {
+$arguments += ($bundles + (Join-Path $resources 'HairDirectionRegions.png')) | ForEach-Object {
     $path = (Resolve-Path -LiteralPath $_).Path
     '/resource:' + $path + ',BodyCum.Resources.' + [IO.Path]::GetFileName($path)
 }

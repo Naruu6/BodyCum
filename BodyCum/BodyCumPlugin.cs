@@ -63,7 +63,7 @@ namespace BodyCum
             ImportDefaults(bodyCumKeys);
             HairJuices = new HairJuiceFeature(JuiceColors, Log);
             _enabled = Config.Bind("General", "Enable BodyCum", true,
-                "Allow BodyCum effects in Studio. Turning this off shows native Juices for all characters without changing their individual switches or settings.");
+                "Allow BodyCum effects and hide native clothing Juices in Studio. Turning this off restores native Juices for all characters.");
             StudioSaveLoadApi.RegisterExtraBehaviour<JuiceColorSceneController>(JuiceColorSceneController.DataId);
             JuiceColorStudioUi.Install();
             Log.LogInfo("BodyCum Studio Juices controls are active.");
@@ -84,6 +84,7 @@ namespace BodyCum
                 _effectsActive = true;
             }
             JuiceColors.UpdateMaterials();
+            HairJuices.PrepareNativeLayers();
         }
 
         private void OnDisable() => StopEffects();
@@ -91,7 +92,7 @@ namespace BodyCum
         private void OnDestroy()
         {
             StopEffects();
-            HairJuices?.Dispose();
+            HairJuices?.Disable();
         }
 
         private void StopEffects()

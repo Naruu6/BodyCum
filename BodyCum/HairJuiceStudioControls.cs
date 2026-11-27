@@ -11,6 +11,7 @@ namespace BodyCum
         internal const float Height = 5 * JuiceColorStudioControls.RowHeight;
 
         private readonly JuiceColorStudioControls _ui;
+        private readonly bool _regularHair;
         private readonly Button[] _levelButtons = new Button[3];
         private readonly Text[] _levelLabels = new Text[3];
         private readonly Button _previous;
@@ -27,26 +28,29 @@ namespace BodyCum
         private int _slotIndex = -1;
         private bool _refreshing;
 
-        internal HairJuiceStudioControls(JuiceColorStudioControls ui, Transform parent, float y)
+        internal HairJuiceStudioControls(JuiceColorStudioControls ui, Transform parent, float y, bool regularHair)
         {
             _ui = ui;
-            var container = new GameObject("SkinEffectsHairJuiceControls", typeof(RectTransform));
+            _regularHair = regularHair;
+            var title = regularHair ? "Hair" : "Accessory";
+            var prefix = regularHair ? "Hair" : "Acc.";
+            var container = new GameObject("BodyCum" + title + "Controls", typeof(RectTransform));
             var panel = (RectTransform)container.transform;
             panel.SetParent(parent, false);
             JuiceColorStudioControls.SetRect(panel, 0f, y, 210f, Height);
 
-            ui.Label(panel, "Accessory", 0f, 0f, 85f);
+            ui.Label(panel, title, 0f, 0f, 85f);
             var tiers = new[] { "OFF", "x1", "x2" };
             for (var level = 0; level < tiers.Length; level++)
             {
                 var tier = level;
-                var button = ui.PushButton(panel, "Hair " + tiers[level], 88f + level * 40f, 0f, 38f, () => SetLevel(tier));
+                var button = ui.PushButton(panel, title + " " + tiers[level], 88f + level * 40f, 0f, 38f, () => SetLevel(tier));
                 _levelButtons[level] = button;
                 _levelLabels[level] = LabelButton(ui, button, tiers[level], 0f, 38f);
             }
 
             const float slotY = JuiceColorStudioControls.RowHeight;
-            ui.Label(panel, "Acc Slot", 0f, slotY, 58f);
+            ui.Label(panel, regularHair ? "Hair Slot" : "Acc Slot", 0f, slotY, 58f);
             _previous = ui.PushButton(panel, "Previous hair slot", 59f, slotY, 22f, () => MoveSlot(-1));
             LabelButton(ui, _previous, "<", 0f, 22f);
             _slot = ui.PushButton(panel, "Toggle hair slot", 83f, slotY, 99f, ToggleSlot);
@@ -58,9 +62,9 @@ namespace BodyCum
             _next = ui.PushButton(panel, "Next hair slot", 184f, slotY, 22f, () => MoveSlot(1));
             LabelButton(ui, _next, ">", 0f, 22f);
 
-            _horizontal = ui.SliderRow(panel, "Acc. X", 2, -100, 100, SetHorizontal, out _horizontalValue);
-            _vertical = ui.SliderRow(panel, "Acc. Y", 3, -100, 100, SetVertical, out _verticalValue);
-            _size = ui.SliderRow(panel, "Acc. Size", 4, HairJuiceProfile.MinimumSize, HairJuiceProfile.MaximumSize, SetSize, out _sizeValue);
+            _horizontal = ui.SliderRow(panel, prefix + " X", 2, -100, 100, SetHorizontal, out _horizontalValue);
+            _vertical = ui.SliderRow(panel, prefix + " Y", 3, -100, 100, SetVertical, out _verticalValue);
+            _size = ui.SliderRow(panel, prefix + " Size", 4, HairJuiceProfile.MinimumSize, HairJuiceProfile.MaximumSize, SetSize, out _sizeValue);
 
         }
 
@@ -100,16 +104,16 @@ namespace BodyCum
             if (_character == null || BodyCumPlugin.HairJuices == null)
                 return;
 
-            var profile = BodyCumPlugin.HairJuices.Get(_character);
+            var profile = BodyCumPlugin.HairJuices.GetHairProfile(_character, _regularHair);
             var character = _character.charInfo;
             GameObject root;
             string identity;
-            if (!HairJuiceFeature.TryGetAccessory(character, _slotIndex, out root, out identity))
+            if (!TryGetSlot(character, _slotIndex, out root, out identity))
             {
                 _slotIndex = FirstSelectedSlot(character, profile);
                 if (_slotIndex < 0)
                     _slotIndex = FindSlot(character, -1, 1);
-                HairJuiceFeature.TryGetAccessory(character, _slotIndex, out root, out identity);
+                TryGetSlot(character, _slotIndex, out root, out identity);
             }
 
             var hasSlot = _slotIndex >= 0 && root && identity != null;
@@ -120,12 +124,13 @@ namespace BodyCum
             SetButtonColors(_slot, hasSelection);
             if (hasSlot)
             {
-                var name = HairJuiceFeature.GetAccessoryLabel(character, _slotIndex, root);
+                var name = _regularHair ? RegularHairJuiceParts.GetLabel(character, _slotIndex, root) :
+                    HairJuiceFeature.GetAccessoryLabel(character, _slotIndex, root);
                 SetSlotLabel((hasSelection ? "[ON] " : "[  ] ") + name);
             }
             else
             {
-                SetSlotLabel("No accessory");
+                SetSlotLabel(_regularHair ? "No hair" : "No accessory");
             }
 
             var level = profile?.Level ?? 0;
@@ -171,28 +176,31 @@ namespace BodyCum
             _slotLabel.text = value;
         }
 
-        private static int FirstSelectedSlot(ChaControl character, HairJuiceProfile profile)
+        private bool TryGetSlot(ChaControl character, int slot, out GameObject root, out string identity) =>
+            HairJuiceFeature.TryGetHairSlot(character, slot, _regularHair, out root, out identity);
+
+        private int FirstSelectedSlot(ChaControl character, HairJuiceProfile profile)
         {
             if (profile != null)
             {
                 var found = int.MaxValue;
                 foreach (var entry in profile.Slots)
-                    if (entry.Key < found && HairJuiceFeature.TryGetAccessory(character, entry.Key, out _, out var identity) && identity == entry.Value)
+                    if (entry.Key < found && TryGetSlot(character, entry.Key, out _, out var identity) && identity == entry.Value)
                         found = entry.Key;
                 return found == int.MaxValue ? -1 : found;
             }
             return -1;
         }
 
-        private static int FindSlot(ChaControl character, int current, int direction)
+        private int FindSlot(ChaControl character, int current, int direction)
         {
-            var count = character ? character.objAccessory?.Length ?? 0 : 0;
+            var count = character ? (_regularHair ? character.objHair : character.objAccessory)?.Length ?? 0 : 0;
             if (current < 0 || current >= count)
                 current = direction == 1 ? count - 1 : 0;
             for (var offset = 1; offset <= count; offset++)
             {
                 var index = (current + direction * offset + count) % count;
-                if (HairJuiceFeature.TryGetAccessory(character, index, out _, out _))
+                if (TryGetSlot(character, index, out _, out _))
                     return index;
             }
             return -1;
@@ -208,9 +216,9 @@ namespace BodyCum
 
         private void ToggleSlot()
         {
-            if (_character == null || !HairJuiceFeature.TryGetAccessory(_character.charInfo, _slotIndex, out _, out var identity))
+            if (_character == null || !TryGetSlot(_character.charInfo, _slotIndex, out _, out var identity))
                 return;
-            var slots = BodyCumPlugin.HairJuices.Edit(_character).Slots;
+            var slots = BodyCumPlugin.HairJuices.EditHairProfile(_character, _regularHair).Slots;
             if (slots.TryGetValue(_slotIndex, out var selected) && selected == identity)
                 slots.Remove(_slotIndex);
             else
@@ -222,7 +230,7 @@ namespace BodyCum
         {
             if (_character == null)
                 return;
-            BodyCumPlugin.HairJuices.Edit(_character).Level = value;
+            BodyCumPlugin.HairJuices.EditHairProfile(_character, _regularHair).Level = value;
             Refresh();
         }
 
@@ -231,7 +239,7 @@ namespace BodyCum
             if (_refreshing || _character == null)
                 return;
             var offset = Mathf.RoundToInt(value);
-            BodyCumPlugin.HairJuices.Edit(_character).Horizontal = offset;
+            BodyCumPlugin.HairJuices.EditHairProfile(_character, _regularHair).Horizontal = offset;
             _horizontalValue.text = offset.ToString();
         }
 
@@ -240,7 +248,7 @@ namespace BodyCum
             if (_refreshing || _character == null)
                 return;
             var offset = Mathf.RoundToInt(value);
-            BodyCumPlugin.HairJuices.Edit(_character).Vertical = offset;
+            BodyCumPlugin.HairJuices.EditHairProfile(_character, _regularHair).Vertical = offset;
             _verticalValue.text = offset.ToString();
         }
 
@@ -249,7 +257,7 @@ namespace BodyCum
             if (_refreshing || _character == null)
                 return;
             var size = Mathf.RoundToInt(value);
-            BodyCumPlugin.HairJuices.Edit(_character).Size = size;
+            BodyCumPlugin.HairJuices.EditHairProfile(_character, _regularHair).Size = size;
             _sizeValue.text = size + "%";
         }
     }

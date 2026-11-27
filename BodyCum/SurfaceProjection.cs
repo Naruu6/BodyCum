@@ -24,12 +24,19 @@ namespace BodyCum
         {
             internal OCIChar Actor;
             internal Mesh Source;
+            internal Renderer Renderer;
+            internal Transform SlotRoot;
+            internal Shader[] StrandShaders;
+            internal Material[] StrandMaterials;
             internal Mesh Snapshot;
             internal Matrix4x4 DrawMatrix;
             internal string Key;
             internal string SlotKey;
             internal SurfaceProjectionReference Reference;
             internal List<Vector3> Coordinates;
+            internal List<Vector4> StrandCoordinates;
+            internal Mesh StrandRigidCopy;
+            internal SurfaceMesh[] StrandGroup;
             internal int LastFrame;
             internal int BakeFrame = -1;
             internal int BakeCount;
@@ -50,6 +57,10 @@ namespace BodyCum
                 for (var slot = 0; slot < character.objAccessory.Length; slot++)
                     if (TryGetAccessory(character, slot, out _, out var identity))
                         valid.Add(SurfaceSlotKey(false, slot, identity));
+            if (character.objHair != null)
+                for (var slot = 0; slot < character.objHair.Length; slot++)
+                    if (RegularHairJuiceParts.TryGet(character, slot, out _, out var identity))
+                        valid.Add(RegularHairSurfaceSlotKey(slot, identity));
             for (var slot = 0; slot < ClothesJuiceParts.SlotCount; slot++)
                 if (ClothesJuiceParts.TryGet(character, slot, out _, out var identity))
                     valid.Add(SurfaceSlotKey(true, slot, identity));
@@ -84,6 +95,9 @@ namespace BodyCum
 
         private static string SurfaceSlotKey(bool clothes, int slot, string identity) =>
             (clothes ? "clothes/" : "accessory/") + slot + "/" + identity + "\n";
+
+        private static string RegularHairSurfaceSlotKey(int slot, string identity) =>
+            "hair/" + slot + "/" + identity + "\n";
 
         private static string SurfaceRendererKey(string slotKey, Transform root, Renderer renderer, Mesh mesh)
         {
@@ -124,7 +138,7 @@ namespace BodyCum
                 if (surface == null)
                 {
                     var key = SurfaceRendererKey(slotKey, root, renderer, source);
-                    surface = new SurfaceMesh { Actor = actor, Source = source, Key = key, SlotKey = slotKey };
+                    surface = new SurfaceMesh { Actor = actor, Source = source, Key = key, SlotKey = slotKey, Renderer = renderer, SlotRoot = root };
                     var skinned = renderer as SkinnedMeshRenderer;
                     if (skinned)
                     {
@@ -184,7 +198,10 @@ namespace BodyCum
                     if (surface.Snapshot.vertexCount != source.vertexCount)
                         throw new InvalidOperationException("The skinned surface geometry is not ready.");
                     // BakeMesh also copies the source UV channels. Restore only our private snapshot channel.
-                    surface.Snapshot.SetUVs(1, surface.Coordinates);
+                    if (surface.StrandCoordinates != null)
+                        surface.Snapshot.SetUVs(1, surface.StrandCoordinates);
+                    else
+                        surface.Snapshot.SetUVs(1, surface.Coordinates);
                     surface.BakeFrame = frame;
                     surface.BakeCount++;
                     surface.DrawMatrix = drawMatrix;
@@ -240,13 +257,38 @@ namespace BodyCum
                 state.References.Remove(key);
         }
 
-        private void PrepareSurfaceSlot(OCIChar actor, GameObject root, Transform anchor, string slotKey, int frame)
+        private bool PrepareSurfaceSlot(OCIChar actor, GameObject root, Transform anchor, string slotKey, int frame)
         {
             // Capture all parts together. A later camera angle or hidden hair card must not choose a new pose.
+            var ready = true;
             root.GetComponentsInChildren(true, _renderers);
             foreach (var renderer in _renderers)
-                if (renderer && BelongsToSlot(renderer.transform, root.transform) && GetMesh(renderer))
-                    TryGetSurfaceMesh(actor, renderer, root.transform, anchor, slotKey, frame, false, out _);
+                if (renderer && BelongsToSlot(renderer.transform, root.transform) && GetMesh(renderer) &&
+                    TryGetSurfaceMesh(actor, renderer, root.transform, anchor, slotKey, frame, false, out var surface))
+                {
+                    if (surface.Reference.CaptureUntil >= frame)
+                        ready = false;
+                    else
+                        _strandParts.Add(surface);
+                }
+            _renderers.Clear();
+            return ready;
+        }
+
+        // Visibility must not repaint the other hair slots. Keep only placements that have already
+        // settled while this slot was visible. Never bake or initialize a hidden skinned mesh here.
+        private void CollectHiddenStrandParts(OCIChar actor, GameObject root, string slotKey, int frame)
+        {
+            root.GetComponentsInChildren(true, _renderers);
+            foreach (var renderer in _renderers)
+            {
+                if (!renderer || !_surfaceMeshes.TryGetValue(renderer, out var surface) ||
+                    surface.Actor != actor || surface.SlotKey != slotKey || surface.Source != GetMesh(renderer) ||
+                    surface.StrandGroup == null || surface.Reference.CaptureUntil >= frame)
+                    continue;
+                surface.LastFrame = frame;
+                _strandParts.Add(surface);
+            }
             _renderers.Clear();
         }
 
@@ -270,6 +312,9 @@ namespace BodyCum
         {
             if (surface.Snapshot)
                 UnityEngine.Object.Destroy(surface.Snapshot);
+            if (surface.StrandRigidCopy)
+                UnityEngine.Object.Destroy(surface.StrandRigidCopy);
+            surface.StrandGroup = null;
         }
 
         private void ReleaseSurfaceMeshes(OCIChar actor = null)

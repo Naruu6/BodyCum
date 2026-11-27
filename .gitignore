@@ -3,7 +3,6 @@
 /BuildTools/RoslynCscHost.exe
 /BuildTools/InstalledCompilerPath.cs
 /BodyCum/Resources/*.bundle
-/BodyCum/Resources/AccessoryJuiceMask.png
 *.dll
 *.exe
 *.pdb
@@ -18,3 +17,4 @@
 .vscode/
 Thumbs.db
 desktop.ini
+/BodyCum/Resources/HairDirectionRegions.png

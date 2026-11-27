@@ -87,7 +87,7 @@ namespace BodyCum
             }
 
             var hasSlot = _slotIndex >= 0 && root && identity != null;
-            var isSelected = hasSlot && profile != null && profile.Slots.TryGetValue(_slotIndex, out var selected) && selected == identity;
+            var isSelected = hasSlot && profile != null && profile.Slots.ContainsKey(_slotIndex);
             var canEdit = character && feature != null;
             _slot.interactable = _previous.interactable = _next.interactable = hasSlot;
             HairJuiceStudioControls.SetButtonColors(_slot, isSelected);
@@ -132,8 +132,7 @@ namespace BodyCum
             if (profile == null)
                 return -1;
             for (var index = 0; index < ClothesJuiceParts.SlotCount; index++)
-                if (profile.Slots.TryGetValue(index, out var saved) &&
-                    ClothesJuiceParts.TryGet(character, index, out _, out var loaded) && loaded == saved)
+                if (profile.Slots.ContainsKey(index) && ClothesJuiceParts.TryGet(character, index, out _, out _))
                     return index;
             return -1;
         }
@@ -166,9 +165,7 @@ namespace BodyCum
             if (_character == null || feature == null || !ClothesJuiceParts.TryGet(_character.charInfo, _slotIndex, out _, out var identity))
                 return;
             var slots = feature.EditClothes(_character).Slots;
-            if (slots.TryGetValue(_slotIndex, out var selected) && selected == identity)
-                slots.Remove(_slotIndex);
-            else
+            if (!slots.Remove(_slotIndex))
                 slots[_slotIndex] = identity;
             Refresh();
         }

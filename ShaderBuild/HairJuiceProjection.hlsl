@@ -4,7 +4,7 @@ struct HairVertex {
     float3 normal : NORMAL;
     float4 tangent : TANGENT;
     float2 uv : TEXCOORD0;
-    float3 uv1 : TEXCOORD1;
+    float4 uv1 : TEXCOORD1;
     float2 uv2 : TEXCOORD2;
     float2 uv3 : TEXCOORD3;
     float4 color : COLOR0;
@@ -15,7 +15,7 @@ struct HairFragment {
     float2 uv : TEXCOORD0;
     float3 worldPosition : TEXCOORD1;
     float3 worldNormal : TEXCOORD2;
-    float3 surfacePosition : TEXCOORD3;
+    float4 surfacePosition : TEXCOORD3;
 };
 
 #ifdef HAIR_VERTEX
@@ -55,13 +55,32 @@ cbuffer HairProjectionParams : register(b0) {
 Texture2D _HairSourceTex : register(t0);
 Texture2D _HairAlphaTex : register(t1);
 Texture2D _HairPatternTex : register(t2);
+Texture2D _HairDirectionMask : register(t3);
 SamplerState sampler_HairSourceTex : register(s0);
 SamplerState sampler_HairAlphaTex : register(s1);
 SamplerState sampler_HairPatternTex : register(s2);
+SamplerState sampler_HairDirectionMask : register(s3);
+
+// PNG row zero is the top of the authored 2048 atlas. Probe broad,
+// complementary R/G features to distinguish this atlas from other live masks.
+float2 atlasProbe(float2 topLeftTexel) {
+    float2 uv = (topLeftTexel + .5) / 2048.0;
+    return _HairPatternTex.SampleLevel(sampler_HairPatternTex, float2(uv.x, 1.0 - uv.y), 0).rg;
+}
+
+bool hasQuarterTurnedIslands() {
+    float2 upperR = atlasProbe(float2(1554, 419));
+    float2 upperG = atlasProbe(float2(1491, 334));
+    float2 lowerR = atlasProbe(float2(1824, 689));
+    float2 lowerG = atlasProbe(float2(1579, 689));
+    float2 upright = atlasProbe(float2(49, 403));
+    return min(min(upperR.r, lowerR.r), upright.r) > .35 && min(upperG.g, lowerG.g) > .55
+        && max(max(upperR.g, lowerR.g), upright.g) < .09 && max(upperG.r, lowerG.r) < .09;
+}
 
 float4 main(HairFragment input) : SV_Target {
-    // z encodes source alpha (bit 0), frozen coordinates (bit 1), and the retained accessory tag (bit 2).
-    float4 surface = float4(fmod(_HairJuiceParams.z, 4.0) >= 2.0 ? input.surfacePosition : input.worldPosition, 1.0);
+    // z encodes source alpha, frozen coordinates, the accessory tag, and direction correction.
+    float4 surface = float4(fmod(_HairJuiceParams.z, 4.0) >= 2.0 ? input.surfacePosition.xyz : input.worldPosition, 1.0);
     float3 projected = float3(dot(_HairProjectionX, surface), dot(_HairProjectionY, surface), dot(_HairProjectionZ, surface));
     float3 distanceFromCenter = abs(projected);
     float boundary = 1.0 - smoothstep(.44, .5, max(distanceFromCenter.x, max(distanceFromCenter.y, distanceFromCenter.z)));
@@ -70,25 +89,56 @@ float4 main(HairFragment input) : SV_Target {
     float sourceAlpha = 1.0;
     if (fmod(_HairJuiceParams.z, 2.0) > .5)
         sourceAlpha = _HairSourceTex.Sample(sampler_HairSourceTex, input.uv * _HairSourceTex_ST.xy + _HairSourceTex_ST.zw).a;
-    if (any(_HairAlphaParams > 0.0)) {
-        float4 sampleAlpha = _HairAlphaTex.Sample(sampler_HairAlphaTex, input.uv * _HairAlphaTex_ST.xy + _HairAlphaTex_ST.zw);
-        sourceAlpha *= saturate(dot(sampleAlpha, _HairAlphaParams));
+    if (_HairAlphaParams.w > .5) {
+        // Match main_opaque in both the color and depth passes. Disabled
+        // channels cannot cut the garment; surviving pixels are opaque fabric.
+        float2 mask = _HairAlphaTex.Sample(sampler_HairAlphaTex, input.uv * _HairAlphaTex_ST.xy + _HairAlphaTex_ST.zw).rg;
+        float2 enabledMask = max(mask, 1.0 - _HairAlphaParams.xy);
+        clip(min(sourceAlpha, min(enabledMask.x, enabledMask.y)) - .5);
+        sourceAlpha = 1.0;
+    } else {
+        if (any(_HairAlphaParams > 0.0)) {
+            float4 sampleAlpha = _HairAlphaTex.Sample(sampler_HairAlphaTex, input.uv * _HairAlphaTex_ST.xy + _HairAlphaTex_ST.zw);
+            sourceAlpha *= saturate(dot(sampleAlpha, _HairAlphaParams));
+        }
+        clip(sourceAlpha - max(.003, _HairJuiceParams.w));
     }
-    clip(sourceAlpha - max(.003, _HairJuiceParams.w));
 
     // Keep the original head-space XY flow on every surface. The texture's vertical axis must
     // not turn into head-space depth on selected triangles. Correct sampler bindings provide Repeat.
     // x2 adds the green channel from the live body's original Juices texture as on skin.
     float2 uv = (projected.xy + .5) * _HairPatternTex_ST.xy + _HairPatternTex_ST.zw;
+    // Only private accessory geometry carries a per-strand phase in UV1.w.
+    // Apply it after tiling, before both the native sample and its direction lookup.
+    if (fmod(_HairJuiceParams.z, 8.0) >= 4.0 && _HairProjectionOffsets.w > .5)
+        uv.x += input.surfacePosition.w;
     float2 mask = _HairPatternTex.Sample(sampler_HairPatternTex, uv).rg;
+    float2 dx = ddx(uv), dy = ddy(uv);
+    [branch] if (_HairJuiceParams.z >= 8.0) {
+        float2 atlasUV = frac(uv);
+        float region = _HairDirectionMask.SampleLevel(sampler_HairDirectionMask, atlasUV, 0).r;
+        [branch] if (region > 0.0) {
+            [branch] if (hasQuarterTurnedIslands()) {
+                // The rotated islands are copies of the top-left tile. Sample
+                // its upright counterpart in the same phase and at the same LOD.
+                float2 uprightUV = frac(atlasUV * 4.0) * .25 + float2(0.0, .75);
+                float2 upright = _HairPatternTex.SampleGrad(sampler_HairPatternTex, uprightUV, dx, dy).rg;
+                mask = lerp(mask, upright, region);
+            }
+        }
+    }
     float pattern = _HairJuiceParams.x >= 1.5 ? max(mask.r, mask.g) : mask.r;
     float bias = 24.0 * saturate(_HairJuiceParams.y) * pattern;
     float coverage = pattern * (1.0 + bias) / (1.0 + bias * pattern);
-    float opacity = coverage * boundary * saturate(abs(_HairJuiceColor.w)) * saturate(sourceAlpha);
-    clip(opacity - .001);
+    float visibleSurface = boundary * saturate(abs(_HairJuiceColor.w)) * saturate(sourceAlpha);
+    // Preserve the old footprint and the surface alpha. Only strengthen the interior pigment.
+    clip(coverage * visibleSurface - .001);
+    float remainder = 1.0 - saturate(coverage);
+    float solidCoverage = 1.0 - remainder * remainder * remainder;
+    float opacity = lerp(coverage, solidCoverage, smoothstep(.20, .76, pattern)) * visibleSurface;
 
     float3 normal = normalize(input.worldNormal + float3(0.0, .0001, 0.0));
-    float shapeLight = .78 + .22 * saturate(abs(normal.y));
+    float shapeLight = .96 + .04 * saturate(abs(normal.y));
     float3 color = saturate(_HairJuiceColor.rgb * shapeLight);
     if (_HairJuiceColor.w > 0.0)
         color = lerp(color, 1.0, .3 * smoothstep(.52, .84, pattern));

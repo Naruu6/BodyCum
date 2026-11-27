@@ -35,9 +35,11 @@ namespace BodyCum
         private readonly CustomJuiceColor _colors;
         private readonly ManualLogSource _log;
         private readonly Dictionary<OCIChar, HairJuiceProfile> _profiles = new Dictionary<OCIChar, HairJuiceProfile>();
+        private readonly Dictionary<OCIChar, HairJuiceProfile> _regularHairProfiles = new Dictionary<OCIChar, HairJuiceProfile>();
         private readonly Dictionary<Camera, CommandBuffer> _buffers = new Dictionary<Camera, CommandBuffer>();
         private readonly Dictionary<Renderer, HairMaterials> _layers = new Dictionary<Renderer, HairMaterials>();
         private readonly HashSet<Transform> _accessoryRoots = new HashSet<Transform>();
+        private readonly List<AccessorySelection> _selectedAccessories = new List<AccessorySelection>();
         private readonly List<Renderer> _renderers = new List<Renderer>();
         private readonly List<Renderer> _expiredRenderers = new List<Renderer>();
         private readonly List<Camera> _expiredCameras = new List<Camera>();
@@ -60,34 +62,46 @@ namespace BodyCum
             internal Vector2 Offset;
         }
 
+        private struct AccessorySelection
+        {
+            internal GameObject Root;
+            internal string SlotKey;
+        }
+
         internal HairJuiceFeature(CustomJuiceColor colors, ManualLogSource log)
         {
             _colors = colors;
             _log = log;
         }
 
-        internal HairJuiceProfile Get(OCIChar character)
+        internal HairJuiceProfile Get(OCIChar character) => GetHairProfile(character, false);
+        internal HairJuiceProfile Edit(OCIChar character) => EditHairProfile(character, false);
+        internal void Set(OCIChar character, HairJuiceProfile profile) => _profiles[character] = profile;
+        internal void SetRegularHair(OCIChar character, HairJuiceProfile profile) => _regularHairProfiles[character] = profile;
+
+        internal HairJuiceProfile GetHairProfile(OCIChar character, bool regularHair)
         {
-            HairJuiceProfile profile;
-            return character != null && _profiles.TryGetValue(character, out profile) ? profile : null;
+            var profiles = regularHair ? _regularHairProfiles : _profiles;
+            return character != null && profiles.TryGetValue(character, out var profile) ? profile : null;
         }
 
-        internal HairJuiceProfile Edit(OCIChar character)
+        internal HairJuiceProfile EditHairProfile(OCIChar character, bool regularHair)
         {
-            var profile = Get(character);
-            if (profile == null)
-            {
-                profile = new HairJuiceProfile();
-                _profiles.Add(character, profile);
-            }
+            var existing = GetHairProfile(character, regularHair);
+            if (existing != null) return existing;
+            var profile = new HairJuiceProfile();
+            (regularHair ? _regularHairProfiles : _profiles).Add(character, profile);
             return profile;
         }
 
-        internal void Set(OCIChar character, HairJuiceProfile profile) => _profiles[character] = profile;
+        internal static bool TryGetHairSlot(ChaControl character, int slot, bool regularHair, out GameObject root, out string identity) =>
+            regularHair ? RegularHairJuiceParts.TryGet(character, slot, out root, out identity) :
+                TryGetAccessory(character, slot, out root, out identity);
 
         internal void Remove(OCIChar character)
         {
             _profiles.Remove(character);
+            _regularHairProfiles.Remove(character);
             _clothesProfiles.Remove(character);
             ReleaseSurfaceMeshes(character);
             _surfaceStates.Remove(character);
@@ -96,6 +110,7 @@ namespace BodyCum
         internal void Clear()
         {
             _profiles.Clear();
+            _regularHairProfiles.Clear();
             _clothesProfiles.Clear();
             _surfaceStates.Clear();
             ReleaseDrawResources();
@@ -109,6 +124,8 @@ namespace BodyCum
             // again immediately before drawing. The pose stamp reuses identical work between hooks.
             Camera.onPreCull += OnCamera;
             Camera.onPreRender += OnCamera;
+            Camera.onPreRender += BeginMaterialOverrides;
+            Camera.onPostRender += EndMaterialOverrides;
             _subscribed = true;
         }
 
@@ -117,8 +134,12 @@ namespace BodyCum
             if (_subscribed)
             Camera.onPreCull -= OnCamera;
             Camera.onPreRender -= OnCamera;
+            Camera.onPreRender -= BeginMaterialOverrides;
+            Camera.onPostRender -= EndMaterialOverrides;
+            ReleaseNativeLayerResources();
             _subscribed = false;
             ReleaseDrawResources();
+            ReleaseDirectionMask();
         }
 
         internal static bool TryGetAccessory(ChaControl character, int slot, out GameObject root, out string identity)
@@ -173,7 +194,22 @@ namespace BodyCum
             buffer?.Clear();
             _surfaceFrustum = GeometryUtility.CalculateFrustumPlanes(camera);
             var hasDraw = RecordSkin(camera, ref buffer, frame);
-            foreach (var entry in _profiles)
+            hasDraw |= RecordHairSlots(camera, ref buffer, frame, _profiles, false);
+            hasDraw |= RecordHairSlots(camera, ref buffer, frame, _regularHairProfiles, true);
+            hasDraw |= RecordClothes(camera, ref buffer, frame);
+            if (buffer != null && !hasDraw)
+            {
+                camera.RemoveCommandBuffer(DrawEvent, buffer);
+                buffer.Release();
+                _buffers.Remove(camera);
+            }
+        }
+
+        private bool RecordHairSlots(Camera camera, ref CommandBuffer buffer, int frame,
+            Dictionary<OCIChar, HairJuiceProfile> profiles, bool regularHair)
+        {
+            var hasDraw = false;
+            foreach (var entry in profiles)
             {
                 var character = entry.Key.charInfo;
                 var profile = entry.Value;
@@ -191,9 +227,6 @@ namespace BodyCum
                 if (!TryGetBodyPattern(character, out var pattern))
                     continue;
 
-                // Accessories use a dedicated downward-flowing mask; retain the existing UV scale/phase.
-                pattern.Texture = GetAccessoryPattern() ?? pattern.Texture;
-
                 // Extend the original texture coordinates downwards without stretching the drops.
                 pattern.Offset.y -= pattern.Scale.y * (HairCoverageHeightMultiplier - 1f);
                 pattern.Scale.y *= HairCoverageHeightMultiplier;
@@ -205,29 +238,42 @@ namespace BodyCum
                 var color = settings.ToShaderColor(QualitySettings.activeColorSpace == ColorSpace.Linear);
                 _accessoryRoots.Clear();
                 AddSlotRoots(character.objAccessory);
-
+                if (regularHair)
+                    AddSlotRoots(character.objHair);
+                _strandParts.Clear();
+                _selectedAccessories.Clear();
+                var placementReady = true;
                 foreach (var slot in profile.Slots)
                 {
                     GameObject root;
                     string identity;
-                    if (!TryGetAccessory(character, slot.Key, out root, out identity) || identity != slot.Value || !root.activeInHierarchy)
+                    if (!TryGetHairSlot(character, slot.Key, regularHair, out root, out identity) || identity != slot.Value)
                         continue;
+                    var slotKey = regularHair ? RegularHairSurfaceSlotKey(slot.Key, identity) : SurfaceSlotKey(false, slot.Key, identity);
+                    if (!root.activeInHierarchy)
+                    {
+                        CollectHiddenStrandParts(entry.Key, root, slotKey, frame);
+                        continue;
+                    }
                     if (!EnsureShader())
                         break;
-                    var slotKey = SurfaceSlotKey(false, slot.Key, identity);
-                    PrepareSurfaceSlot(entry.Key, root, head.transform, slotKey, frame);
-                    buffer = buffer ?? CreateDrawBuffer(camera);
-                    hasDraw |= RecordSlot(buffer, camera, entry.Key, root, head.transform,
-                        slotKey, projection, pattern, color, profile.Level, settings.Density / 100f, frame);
+                    placementReady &= PrepareSurfaceSlot(entry.Key, root, head.transform, slotKey, frame);
+                    _selectedAccessories.Add(new AccessorySelection { Root = root, SlotKey = slotKey });
                 }
+                // Build overlapping strand offsets together once the new surfaces settle.
+                // Existing surfaces keep drawing their last completed layout while they wait.
+                if (placementReady)
+                    PrepareStrandLayout();
+                foreach (var selection in _selectedAccessories)
+                {
+                    buffer = buffer ?? CreateDrawBuffer(camera);
+                    hasDraw |= RecordSlot(buffer, camera, entry.Key, selection.Root, head.transform,
+                        selection.SlotKey, projection, pattern, color, profile.Level, settings.Density / 100f, frame);
+                }
+                _strandParts.Clear();
+                _selectedAccessories.Clear();
             }
-            hasDraw |= RecordClothes(camera, ref buffer, frame);
-            if (buffer != null && !hasDraw)
-            {
-                camera.RemoveCommandBuffer(DrawEvent, buffer);
-                buffer.Release();
-                _buffers.Remove(camera);
-            }
+            return hasDraw;
         }
 
         private CommandBuffer CreateDrawBuffer(Camera camera)
@@ -302,21 +348,25 @@ namespace BodyCum
         private bool RecordSlot(CommandBuffer buffer, Camera camera, OCIChar actor, GameObject root, Transform anchor,
             string slotKey, Matrix4x4 projection,
             BodyPattern pattern, Vector4 color, int level, float density, int frame,
-            Func<Material, bool> includeMaterial = null)
+            Func<Material, bool> includeMaterial = null, bool underwear = false)
         {
             root.GetComponentsInChildren(false, _renderers);
             var drawn = false;
-            var adaptiveAccessory = slotKey.StartsWith("accessory/", StringComparison.Ordinal);
+            var hairSurface = slotKey.StartsWith("accessory/", StringComparison.Ordinal) ||
+                slotKey.StartsWith("hair/", StringComparison.Ordinal);
+            var adaptiveHair = hairSurface;
             var dimensions = Vector4.one;
-            if (adaptiveAccessory)
+            if (adaptiveHair)
             {
                 var x = Mathf.Abs(projection.m00);
                 var y = Mathf.Abs(projection.m11);
                 var z = Mathf.Abs(projection.m22);
-                adaptiveAccessory = x > .000001f && y > .000001f && z > .000001f &&
+                adaptiveHair = x > .000001f && y > .000001f && z > .000001f &&
                     !float.IsInfinity(x) && !float.IsInfinity(y) && !float.IsInfinity(z);
-                if (adaptiveAccessory) dimensions = new Vector4(1f / x, 1f / y, 1f / z, .15f);
+                if (adaptiveHair) dimensions = new Vector4(1f / x, 1f / y, 1f / z, .15f);
             }
+            var directionMask = adaptiveHair && pattern.Texture.width == 2048 && pattern.Texture.height == 2048
+                && pattern.Texture.wrapMode == TextureWrapMode.Repeat ? GetDirectionMask() : null;
             foreach (var renderer in _renderers)
             {
                 if (!renderer || !renderer.enabled || (camera.cullingMask & (1 << renderer.gameObject.layer)) == 0 ||
@@ -331,6 +381,12 @@ namespace BodyCum
                     !TryGetSurfaceMesh(actor, renderer, root.transform, anchor, slotKey, frame, true, out var surface))
                     continue;
                 var pendingPlacement = surface.Reference.CaptureUntil >= frame;
+                if (hairSurface && (pendingPlacement || surface.StrandGroup == null))
+                    continue;
+                if (adaptiveHair && surface.StrandGroup != null && !SameStrandShaders(surface, sources))
+                    surface.StrandGroup = null;
+                var hasStrandOffsets = adaptiveHair && !pendingPlacement && surface.StrandCoordinates != null &&
+                    pattern.Texture.wrapMode == TextureWrapMode.Repeat;
                 var drawProjection = pendingPlacement
                     ? projection * anchor.worldToLocalMatrix
                     : SurfaceDrawProjection(surface, renderer, projection);
@@ -346,13 +402,19 @@ namespace BodyCum
                     material.SetTexture(PatternTexture, pattern.Texture);
                     material.SetTextureScale(PatternTexture, pattern.Scale);
                     material.SetTextureOffset(PatternTexture, pattern.Offset);
-                    SetSource(material, source, color, level, density);
+                    SetSource(material, source, color, level, density, underwear);
                     var parameters = material.GetVector(JuiceParameters);
-                    if (adaptiveAccessory)
+                    if (adaptiveHair)
                     {
                         material.SetVector(ProjectionDimensions, dimensions);
-                        material.SetVector(ProjectionOffsets, new Vector4(projection.m03, projection.m13, 0f, 0f));
+                        material.SetVector(ProjectionOffsets, new Vector4(projection.m03, projection.m13, 0f,
+                            hasStrandOffsets ? 1f : 0f));
                         parameters.z += 4f;
+                        if (directionMask)
+                        {
+                            material.SetTexture(HairDirectionMask, directionMask);
+                            parameters.z += 8f;
+                        }
                     }
                     if (surface.Snapshot && !pendingPlacement) parameters.z += 2f;
                     material.SetVector(JuiceParameters, parameters);
@@ -360,6 +422,8 @@ namespace BodyCum
                     {
                         buffer.DrawMesh(surface.Snapshot, surface.DrawMatrix, material, index, 0);
                     }
+                    else if (hasStrandOffsets && surface.StrandRigidCopy)
+                        buffer.DrawMesh(surface.StrandRigidCopy, renderer.localToWorldMatrix, material, index, 0);
                     else
                         buffer.DrawRenderer(renderer, material, index, 0);
                     drawn = true;
@@ -403,7 +467,7 @@ namespace BodyCum
             return material;
         }
 
-        private static void SetSource(Material material, Material source, Vector4 color, int level, float density)
+        private static void SetSource(Material material, Material source, Vector4 color, int level, float density, bool underwear = false)
         {
             var baseName = source.HasProperty("_MainTex") ? "_MainTex" : "_BaseMap";
             var baseTexture = CopyTexture(material, MainTexture, source, baseName);
@@ -411,11 +475,19 @@ namespace BodyCum
             var tag = source.GetTag("RenderType", false, "");
             var cutout = tag == "TransparentCutout" || source.renderQueue < (int)RenderQueue.Transparent;
             var cutoff = cutout && source.HasProperty("_Cutoff") ? Mathf.Clamp01(source.GetFloat("_Cutoff")) : 0f;
-            if (!cutout && source.HasProperty("_Color"))
+            // The native front-hair shader draws from texture alpha. _Color.a is not its opacity.
+            if (!cutout && source.shader.name != "Shader Forge/main_hair_front" && source.HasProperty("_Color"))
                 color.w *= Mathf.Clamp01(source.GetColor("_Color").a);
             material.SetVector(JuiceColor, color);
             material.SetVector(JuiceParameters, new Vector4(level, density, baseTexture ? 1f : 0f, cutoff));
-            material.SetVector(AlphaParameters, alphaTexture ? new Vector4(1f, 0f, 0f, 0f) : Vector4.zero);
+            if (underwear && source.shader.name == "Shader Forge/main_opaque" &&
+                source.HasProperty("_alpha_a") && source.HasProperty("_alpha_b"))
+            {
+                // Native main_opaque uses independently enabled R/G cutout channels.
+                material.SetVector(AlphaParameters, new Vector4(source.GetFloat("_alpha_a"), source.GetFloat("_alpha_b"), 0f, 1f));
+            }
+            else
+                material.SetVector(AlphaParameters, alphaTexture ? new Vector4(1f, 0f, 0f, 0f) : Vector4.zero);
         }
 
         private static Texture CopyTexture(Material destination, string target, Material source, string property)

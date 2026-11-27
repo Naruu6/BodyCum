@@ -13,27 +13,29 @@ namespace BodyCum
 
             var any = false;
             var complete = true;
-            var accessory = Get(actor);
-            var accessories = character.objAccessory;
-            if (accessories != null)
-                for (var slot = 0; slot < accessories.Length; slot++)
+            for (var group = 0; group < 2; group++)
+            {
+                var regularHair = group == 1;
+                var hair = GetHairProfile(actor, regularHair);
+                var count = (regularHair ? character.objHair : character.objAccessory)?.Length ?? 0;
+                for (var slot = 0; slot < count; slot++)
                 {
-                    if (!TryGetAccessory(character, slot, out _, out var identity))
+                    if (!TryGetHairSlot(character, slot, regularHair, out _, out var identity))
                         continue;
                     any = true;
-                    if (accessory == null || accessory.Level == 0 ||
-                        !accessory.Slots.TryGetValue(slot, out var selected) || selected != identity)
+                    if (hair == null || hair.Level == 0 ||
+                        !hair.Slots.TryGetValue(slot, out var selected) || selected != identity)
                         complete = false;
                 }
+            }
 
             var clothes = GetClothes(actor);
             for (var slot = 0; slot < ClothesJuiceParts.SlotCount; slot++)
             {
-                if (!ClothesJuiceParts.TryGet(character, slot, out _, out var identity))
+                if (!ClothesJuiceParts.TryGet(character, slot, out _, out _))
                     continue;
                 any = true;
-                if (clothes == null || clothes.Level == 0 ||
-                    !clothes.Slots.TryGetValue(slot, out var selected) || selected != identity)
+                if (clothes == null || clothes.Level == 0 || !clothes.Slots.ContainsKey(slot))
                     complete = false;
             }
 
@@ -52,21 +54,25 @@ namespace BodyCum
             if (!enabled)
             {
                 Get(actor)?.Slots.Clear();
+                GetHairProfile(actor, true)?.Slots.Clear();
                 GetClothes(actor)?.Slots.Clear();
                 return;
             }
 
-            var accessories = character.objAccessory;
-            if (accessories != null)
-                for (var slot = 0; slot < accessories.Length; slot++)
+            for (var group = 0; group < 2; group++)
+            {
+                var regularHair = group == 1;
+                var count = (regularHair ? character.objHair : character.objAccessory)?.Length ?? 0;
+                for (var slot = 0; slot < count; slot++)
                 {
-                    if (!TryGetAccessory(character, slot, out _, out var identity))
+                    if (!TryGetHairSlot(character, slot, regularHair, out _, out var identity))
                         continue;
-                    var profile = Edit(actor);
+                    var profile = EditHairProfile(actor, regularHair);
                     profile.Slots[slot] = identity;
                     if (profile.Level == 0)
                         profile.Level = 1;
                 }
+            }
 
             for (var slot = 0; slot < ClothesJuiceParts.SlotCount; slot++)
             {

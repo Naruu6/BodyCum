@@ -19,6 +19,7 @@ namespace BodyCum
         private readonly List<Renderer> _ownershipRenderers = new List<Renderer>();
         private readonly Dictionary<int, Material> _nativeMaterials = new Dictionary<int, Material>();
         internal readonly List<SkinJuiceLayer> SkinLayers = new List<SkinJuiceLayer>();
+        internal readonly List<NativeSkinStage> NativeSkinStages = new List<NativeSkinStage>();
 
         private struct SkinSlot
         {
@@ -33,6 +34,9 @@ namespace BodyCum
         private void UpdateSkinLayers(int frame, bool linear, bool includeClothes)
         {
             CollectSkinSlots(includeClothes);
+            NativeSkinStages.Clear();
+            OCIChar measured = null;
+            var bustExtra = Vector4.zero;
             foreach (var slot in _skinSlots)
             {
                 if (!BodyCumPlugin.IsCharacterEnabled(slot.Actor))
@@ -41,12 +45,28 @@ namespace BodyCum
                 var color = settings.ToShaderColor(linear);
                 var density = settings.Density / 100f;
                 var belly = slot.MainBody && slot.Actor.charInfo.sex == 1 ? GetBellyLevel(slot.Actor) : (byte)0;
+                var extra = Vector4.zero;
+                if (!slot.Face && slot.Actor.charInfo.sex == 1 && settings.Opacity != 0 &&
+                    slot.Actor.GetSiruFlags(SiruPart.SiruFrontUp) > 0)
+                {
+                    if (measured != slot.Actor)
+                    {
+                        measured = slot.Actor;
+                        bustExtra = _bustGeometry.GetGain(measured.charInfo, frame);
+                    }
+                    extra = bustExtra;
+                }
                 // A shared Material can't carry different overrides for different actors.
+                var stage = new NativeSkinStage(slot.Renderer, slot.Material, slot.Index,
+                    slot.Face ? (byte)0 : slot.Actor.GetSiruFlags(SiruPart.SiruFrontUp));
                 if (!_sharedMaterials.Contains(slot.Material) &&
-                    ApplyIfActive(slot.Material, slot.Face, frame, color, density, belly))
+                    ApplyIfActive(slot.Material, slot.Face, frame, color, density, belly, extra, stage.HasActive))
+                {
+                    if (stage.NeedsOverride) NativeSkinStages.Add(stage);
                     continue;
+                }
                 if (settings.Opacity != 0)
-                    QueueSkinLayer(slot, belly, color, density);
+                    QueueSkinLayer(slot, belly, color, density, extra);
             }
         }
 
@@ -116,7 +136,7 @@ namespace BodyCum
                 _materialOwners.Add(material, actor);
         }
 
-        private void QueueSkinLayer(SkinSlot slot, byte belly, Vector4 color, float density)
+        private void QueueSkinLayer(SkinSlot slot, byte belly, Vector4 color, float density, Vector4 bustExtra)
         {
             var actor = slot.Actor;
             var face = slot.Face ? actor.GetSiruFlags(SiruPart.SiruKao) : 0;
@@ -150,7 +170,8 @@ namespace BodyCum
             SkinLayers.Add(new SkinJuiceLayer
             {
                 Actor = actor, Renderer = slot.Renderer, Index = slot.Index, Source = slot.Material, Color = color,
-                Density = density, BodyTiers = regions, FaceAndBelly = new Vector4(face, belly, 0f, 0f),
+                Density = density, BodyTiers = regions, FaceAndBelly = new Vector4(face, belly, bustExtra.x, bustExtra.y),
+                InnerBustGain = new Vector2(bustExtra.z, bustExtra.w),
                 Pattern = pattern, PatternTransform = textureSpace, Mask = mask, MaskTransform = maskTransform
             });
         }
@@ -208,9 +229,31 @@ namespace BodyCum
         internal float Density;
         internal Vector4 BodyTiers;
         internal Vector4 FaceAndBelly;
+        internal Vector2 InnerBustGain;
         internal Texture Pattern;
         internal Vector4 PatternTransform;
         internal Texture Mask;
         internal Vector4 MaskTransform;
+    }
+
+    internal struct NativeSkinStage
+    {
+        private const string Breast = "_liquidftop";
+        internal readonly Renderer Renderer;
+        internal readonly Material Source;
+        internal readonly int Index;
+        private readonly byte _tier;
+
+        internal NativeSkinStage(Renderer renderer, Material source, int index, byte tier)
+        {
+            Renderer = renderer;
+            Source = source;
+            Index = index;
+            _tier = tier;
+        }
+
+        internal bool HasActive => _tier > 0;
+        internal bool NeedsOverride => HasActive && Source.HasProperty(Breast) && Source.GetFloat(Breast) < _tier;
+        internal void Apply(Material target) => target.SetFloat(Breast, _tier);
     }
 }

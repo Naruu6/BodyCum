@@ -22,8 +22,10 @@ namespace BodyCum
         private readonly ConfigEntry<int> _density;
         private readonly ConfigEntry<int> _brightness;
         private readonly ManualLogSource _log;
+        private readonly BustPatternGeometry _bustGeometry = new BustPatternGeometry();
         private readonly int _colorId = Shader.PropertyToID("_SkinEffectsJuiceColor");
         private readonly int _densityId = Shader.PropertyToID("_SkinEffectsJuiceDensity");
+        private readonly int _bustWarpId = Shader.PropertyToID("_BodyCumBustWarp");
         private readonly int _maskId = Shader.PropertyToID("_liquidmask");
         private readonly int _faceId = Shader.PropertyToID("_liquidface");
         private readonly int _frontTopId = Shader.PropertyToID("_liquidftop");
@@ -54,6 +56,7 @@ namespace BodyCum
             internal Vector4 Color;
             internal float Density;
             internal byte BellyLevel;
+            internal Vector4 BustExtra;
         }
 
         private sealed class ShaderVariant
@@ -148,8 +151,6 @@ namespace BodyCum
             var linear = QualitySettings.activeColorSpace == ColorSpace.Linear;
             UpdateSkinLayers(frame, linear, hasClothes);
             QueueTongueLayers(linear);
-            if (hasClothes)
-                UpdateNativeClothes(clothes, frame, linear);
 
             foreach (var entry in _materials)
                 if (!entry.Key || entry.Value.LastFrame != frame)
@@ -160,27 +161,6 @@ namespace BodyCum
                 _materials.Remove(material);
             }
             _expired.Clear();
-        }
-
-        private void UpdateNativeClothes(HairJuiceFeature clothes, int frame, bool linear)
-        {
-            foreach (var item in KoikatsuStudio.Instance.dicObjectCtrl.Values)
-            {
-                if (!(item is OCIChar actor) || !actor.charInfo || !actor.charInfo.hiPoly || !BodyCumPlugin.IsCharacterEnabled(actor))
-                    continue;
-                var settings = GetSettings(actor);
-                if (settings.Opacity == 0)
-                    continue;
-
-                var color = settings.ToShaderColor(linear);
-                var density = settings.Density / 100f;
-                clothes.ApplyNativeClothes(actor, material =>
-                {
-                    if (!_sharedMaterials.Contains(material) &&
-                        (IsCustomMaterial(material) || _variants.ContainsKey(material.shader.name)))
-                        ApplyIfActive(material, false, frame, color, density);
-                });
-            }
         }
 
         private JuiceColorSettings GetDefaults()
@@ -209,7 +189,8 @@ namespace BodyCum
         internal bool IsCustomMaterial(Material material) =>
             _materials.TryGetValue(material, out var applied) && material.shader == applied.Replacement;
 
-        private bool ApplyIfActive(Material material, bool face, int frame, Vector4 color, float density, byte bellyLevel = 0)
+        private bool ApplyIfActive(Material material, bool face, int frame, Vector4 color, float density,
+            byte bellyLevel = 0, Vector4 bustExtra = default(Vector4), bool forceActive = false)
         {
             if (!material || !material.HasProperty(_maskId) || !material.GetTexture(_maskId))
                 return false;
@@ -218,7 +199,7 @@ namespace BodyCum
             if (!current)
                 return false;
 
-            var active = bellyLevel != 0 || (face ? IsActive(material, _faceId) :
+            var active = forceActive || bellyLevel != 0 || (face ? IsActive(material, _faceId) :
                 IsActive(material, _frontTopId) || IsActive(material, _frontBottomId) ||
                 IsActive(material, _backTopId) || IsActive(material, _backBottomId));
             if (!active)
@@ -245,6 +226,11 @@ namespace BodyCum
             }
 
             applied.LastFrame = frame;
+            if (applied.Density < 0f || applied.BustExtra != bustExtra)
+            {
+                material.SetVector(_bustWarpId, bustExtra);
+                applied.BustExtra = bustExtra;
+            }
             if (applied.Density < 0f || applied.Color != color)
             {
                 material.SetVector(_colorId, color);
@@ -264,6 +250,8 @@ namespace BodyCum
 
         internal void RestoreMaterials()
         {
+            NativeSkinStages.Clear();
+            _bustGeometry.Clear();
             foreach (var entry in _materials)
                 Restore(entry.Key, entry.Value);
             _materials.Clear();

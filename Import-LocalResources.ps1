@@ -8,7 +8,7 @@ $ErrorActionPreference = 'Stop'
 $pluginFile = (Resolve-Path -LiteralPath $PluginPath).Path
 $manifest = Get-Content -LiteralPath (Join-Path $PSScriptRoot 'resource-hashes.json') -Raw | ConvertFrom-Json
 if ((Get-FileHash -LiteralPath $pluginFile -Algorithm SHA256).Hash -ne $manifest.dllSha256) {
-    throw 'This import recipe targets the recorded BodyCum 1.0 UI-cleanup DLL. The supplied DLL has a different hash.'
+    throw 'The supplied DLL does not match the BodyCum 1.0 release checksum.'
 }
 
 $assembly = [Reflection.Assembly]::Load([IO.File]::ReadAllBytes($pluginFile))
@@ -48,4 +48,4 @@ $null = New-Item -ItemType Directory -Path $destination -Force
 foreach ($item in $pending) {
     [IO.File]::WriteAllBytes($item.Path, $item.Bytes)
 }
-Write-Output ('Verified all five local resources; imported ' + $pending.Count + '. No files were uploaded.')
+Write-Output ('Verified ' + $manifest.resources.Count + ' resources and imported ' + $pending.Count + '.')

@@ -11,7 +11,6 @@ namespace BodyCum
         private const float ClothesPatternSpan = .42f;
 
         private readonly Dictionary<OCIChar, ClothesJuiceProfile> _clothesProfiles = new Dictionary<OCIChar, ClothesJuiceProfile>();
-        private readonly List<Renderer> _nativeClothesRenderers = new List<Renderer>();
 
         internal ClothesJuiceProfile GetClothes(OCIChar character) =>
             character != null && _clothesProfiles.TryGetValue(character, out var profile) ? profile : null;
@@ -40,37 +39,6 @@ namespace BodyCum
             }
         }
 
-        internal void ApplyNativeClothes(OCIChar studioCharacter, Action<Material> apply)
-        {
-            var profile = GetClothes(studioCharacter);
-            var character = studioCharacter.charInfo;
-            if (profile == null || profile.Level != 1 || profile.HasTransform || profile.Slots.Count == 0 ||
-                !character || !character.isActiveAndEnabled)
-                return;
-
-            var body = character.rendBody ? character.rendBody.sharedMaterial : character.customMatBody;
-            var face = character.rendFace ? character.rendFace.sharedMaterial : character.customMatFace;
-            _accessoryRoots.Clear();
-            AddSlotRoots(character.objAccessory);
-            AddSlotRoots(character.objClothes);
-            foreach (var slot in profile.Slots)
-            {
-                if (!TryGetClothesRoot(character, slot, out var root))
-                    continue;
-                root.GetComponentsInChildren(false, _nativeClothesRenderers);
-                foreach (var renderer in _nativeClothesRenderers)
-                {
-                    if (!renderer || !renderer.enabled || !BelongsToSlot(renderer.transform, root.transform))
-                        continue;
-                    // Studio gives each renderer its own first material when setting native Juices.
-                    var source = renderer.sharedMaterial;
-                    if (IsGarmentMaterial(source, body, face) && TryGetBodyPattern(source, out _))
-                        apply(source);
-                }
-                _nativeClothesRenderers.Clear();
-            }
-        }
-
         private bool RecordClothes(Camera camera, ref CommandBuffer buffer, int frame)
         {
             var drawn = false;
@@ -87,18 +55,20 @@ namespace BodyCum
 
                 var body = character.rendBody ? character.rendBody.sharedMaterial : character.customMatBody;
                 var face = character.rendFace ? character.rendFace.sharedMaterial : character.customMatFace;
-                bool IncludeMaterial(Material source) => IsGarmentMaterial(source, body, face) && !_colors.IsCustomMaterial(source);
+                bool IncludeMaterial(Material source) => IsGarmentMaterial(source, body, face);
 
                 var color = settings.ToShaderColor(QualitySettings.activeColorSpace == ColorSpace.Linear);
                 var bodyRoot = character.objBodyBone ? character.objBodyBone.transform : character.transform;
                 _accessoryRoots.Clear();
                 AddSlotRoots(character.objAccessory);
                 AddSlotRoots(character.objClothes);
-                foreach (var slot in profile.Slots)
+                foreach (var slot in profile.Slots.Keys)
                 {
-                    var slotKey = SurfaceSlotKey(true, slot.Key, slot.Value);
-                    if (!TryGetClothesRoot(character, slot, out var root) ||
-                        !GetClothesProjection(entry.Key, root, bodyRoot, slotKey, source => IsGarmentMaterial(source, body, face),
+                    if (!ClothesJuiceParts.TryGet(character, slot, out var root, out var identity) || !root.activeInHierarchy)
+                        continue;
+                    // Slot selection survives clothing swaps. The mesh identity still owns its placement.
+                    var slotKey = SurfaceSlotKey(true, slot, identity);
+                    if (!GetClothesProjection(entry.Key, root, bodyRoot, slotKey, IncludeMaterial,
                             profile, frame, out var projection, out var span))
                         continue;
                     if (!EnsureShader())
@@ -109,8 +79,9 @@ namespace BodyCum
                     pattern.Scale *= span / ClothesPatternSpan;
                     pattern.Offset += (bodyPattern.Scale - pattern.Scale) * .5f;
                     buffer = buffer ?? CreateDrawBuffer(camera);
+                    bool underwear = slot == (int)ChaFileDefine.ClothesKind.bra || slot == (int)ChaFileDefine.ClothesKind.shorts;
                     drawn |= RecordSlot(buffer, camera, entry.Key, root, bodyRoot, slotKey, projection, pattern, color, profile.Level,
-                        settings.Density / 100f, frame, IncludeMaterial);
+                        settings.Density / 100f, frame, IncludeMaterial, underwear);
                 }
             }
             return drawn;
@@ -171,9 +142,6 @@ namespace BodyCum
                 max = Vector3.Max(max, local);
             }
         }
-
-        private static bool TryGetClothesRoot(ChaControl character, KeyValuePair<int, string> slot, out GameObject root) =>
-            ClothesJuiceParts.TryGet(character, slot.Key, out root, out var identity) && identity == slot.Value && root.activeInHierarchy;
 
         private static bool IsGarmentMaterial(Material source, Material body, Material face) =>
             source && source.shader && source != body && source != face && !JuiceBodyClones.IsBodyCopy(source, body);

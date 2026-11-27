@@ -4,7 +4,7 @@ using System.IO;
 
 internal static class AbdomenJuiceMask
 {
-    internal const uint TemporaryCount = 3;
+    internal const uint TemporaryCount = 5;
 
     // SM4/5 opcodes. The checked pixel variants all carry mesh UV0 in v1.xy.
     private const uint Add = 0;
@@ -78,6 +78,98 @@ internal static class AbdomenJuiceMask
         Emit(code, Mov, Destination(destination, 3), new[] { swizzle, sample.Register });
     }
 
+    // Locate the two ST transformations from _LiquidTiling. Re-sample the pattern
+    // and normal together, then crossfade their *values*. Fading their coordinates
+    // instead would magnify the drops in the boundary ring.
+    internal static int EmitBodyPattern(List<uint> code, uint[] program, NativeSample sample,
+        uint densityRow, uint saved)
+    {
+        var starts = new Queue<int>();
+        for (int i = 2; i < sample.Start; i += (int)((program[i] >> 24) & 127))
+        {
+            starts.Enqueue(i);
+            if (starts.Count > 3) starts.Dequeue();
+        }
+        var mad = starts.ToArray();
+        if (mad.Length != 3 || (program[mad[0]] & 0x7ff) != Mad ||
+            (program[mad[1]] & 0x7ff) != Mad || (program[mad[2]] & 0x7ff) != Mad ||
+            (program[mad[0] + 3] & 0x7ffff000) != 0x00101000 || program[mad[0] + 4] != 1 ||
+            program[mad[1] + 4] != program[mad[0] + 2] || program[mad[2] + 4] != program[mad[0] + 2])
+            throw new InvalidDataException("Cannot identify the shared liquid UV and its two ST transforms.");
+
+        int normalStart = sample.End;
+        int normalEnd = normalStart + (int)((program[normalStart] >> 24) & 127);
+        uint texture = program[sample.End - 3];
+        uint expectedNormal = texture == 3 ? 2u : texture + 1u;
+        if ((program[normalStart] & 0x7ff) != Sample || program[normalEnd - 3] != expectedNormal ||
+            program[normalEnd - 7] == sample.Register)
+            throw new InvalidDataException("Unexpected native liquid normal sampling operands.");
+
+        // Save the legacy samples for the optional Belly layer before altering the breast samples.
+        code.AddRange(new ArraySegment<uint>(program, 0, sample.Start));
+        SaveShiftedSample(code, program, sample, densityRow, saved);
+        code.AddRange(new ArraySegment<uint>(program, sample.Start, sample.End - sample.Start));
+        SaveNativeSample(code, sample, saved);
+        code.AddRange(new ArraySegment<uint>(program, normalStart, normalEnd - normalStart));
+
+        var gainRow = densityRow + 1;
+        var delta = saved + 1;
+        var uv = saved + 2;
+        var oldPattern = saved + 3;
+        var oldNormal = saved + 4;
+        Emit(code, Add, Destination(uv, 4), CBufferComponent(gainRow, 0), CBufferComponent(gainRow, 1));
+        Emit(code, IfNonzero, Register(uv, 2));
+        Emit(code, Mov, Destination(oldPattern, 15), new[] { 0x00100e46u, sample.Register });
+        Emit(code, Mov, Destination(oldNormal, 15), new[] { 0x00100e46u, program[normalEnd - 7] });
+
+        // Keep this in sync with BustPatternWarp.hlsl. Full-strength through .7
+        // normalized radius, then smoothstep to zero at the boundary.
+        var inputX = new[] { 0x0010100au, 1u };
+        var inputY = new[] { 0x0010101au, 1u };
+        var inputXY = new[] { 0x00101046u, 1u };
+        var xy = new[] { 0x00100046u, delta };
+        var uvXY = new[] { 0x00100046u, uv };
+        Emit(code, Lt, Destination(delta, 4), inputX, Literal(.1566f));
+        Emit(code, Movc, Destination(delta, 1), Register(delta, 2), Literal(-.1107f), Literal(-.2025f));
+        Emit(code, Add, Destination(delta, 1), inputX, Register(delta, 0));
+        Emit(code, Add, Destination(delta, 2), inputY, Literal(-.8453f));
+        Emit(code, Mul, Destination(uv, 3), xy, Vector(1f/.0455f, 1f/.053f, 0f, 0f));
+        Emit(code, 15, Destination(uv, 4), uvXY, uvXY); // dp2
+        var outerGain = new[] { 0x00208046u, 0u, gainRow };
+        var innerGain = new[] { 0x002080e6u, 0u, gainRow }; // cb0[a].zwxx
+        Emit(code, Max, Destination(uv, 8), Register(uv, 2), Literal(.24f * .24f));
+        Emit(code, 68, Destination(uv, 8), Register(uv, 3)); // rsq, finite even at the centre
+        Emit(code, Mad | Saturate, Destination(delta, 8), Register(uv, 3), Literal(-.24f), Literal(1f));
+        Emit(code, Mul, Destination(delta, 8), Register(delta, 3), Register(delta, 3));
+        Emit(code, Mul, Destination(delta, 8), Register(delta, 3), Literal(1f / (.70f * .70f)));
+        Emit(code, Add, Destination(uv, 3), outerGain, new[] { 0x802080e6u, 0x41u, 0u, gainRow });
+        Emit(code, Mad, Destination(uv, 3), Register(delta, 3), uvXY, innerGain);
+        Emit(code, Mul, Destination(delta, 3), xy, uvXY);
+        Emit(code, Mad | Saturate, Destination(uv, 4), Register(uv, 2), Literal(-1f/.51f), Literal(1f/.51f));
+        Emit(code, Mad, Destination(uv, 8), Register(uv, 2), Literal(-2f), Literal(3f));
+        Emit(code, Mul, Destination(uv, 4), Register(uv, 2), Register(uv, 2));
+        Emit(code, Mul, Destination(uv, 4), Register(uv, 2), Register(uv, 3));
+        Emit(code, Add, Destination(uv, 3), xy, inputXY);
+
+        code.AddRange(new ArraySegment<uint>(program, mad[0], 3));
+        code.Add(program[mad[0] + 3] - 0x1000u); // Preserve the source swizzle, read our temporary.
+        code.Add(uv);
+        code.AddRange(new ArraySegment<uint>(program, mad[0] + 5, normalEnd - mad[0] - 5));
+        BlendBustSample(code, program, sample.End, oldPattern, uv, delta);
+        BlendBustSample(code, program, normalEnd, oldNormal, uv, delta);
+        Emit(code, EndIf);
+        return normalEnd;
+    }
+
+    private static void BlendBustSample(List<uint> code, uint[] program, int sampleEnd, uint original, uint uv, uint work)
+    {
+        var mask = (program[sampleEnd - 8] >> 4) & 15;
+        var target = program[sampleEnd - 7];
+        Emit(code, Add, Destination(work, mask), new[] { 0x00100e46u, target },
+            new[] { 0x80100e46u, 0x41u, original });
+        Emit(code, Mad, Destination(target, mask), new[] { 0x00100e46u, work },
+            Register(uv, 2), new[] { 0x00100e46u, original });
+    }
     internal static void SaveShiftedSample(List<uint> code, uint[] program, NativeSample sample,
         uint densityRow, uint destination)
     {

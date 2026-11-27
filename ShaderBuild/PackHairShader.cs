@@ -24,7 +24,8 @@ internal static class PackHairShader
     public static int Main(string[] args)
     {
         bool skin = args.Length == 5 && args[4] == "--skin";
-        if (args.Length != 4 && !skin)
+        bool bake = args.Length == 5 && args[4] == "--bust-bake";
+        if (args.Length != 4 && !skin && !bake)
         {
             Console.Error.WriteLine("Usage: PackHairShader.exe <SB3Utility folder> <mm_base.unity3d> <source HLSL> <output bundle> [--skin]");
             return 2;
@@ -44,7 +45,7 @@ internal static class PackHairShader
 
         try
         {
-            BuildBundle(args[1], args[2], args[3], skin);
+            BuildBundle(args[1], args[2], args[3], skin, bake);
             return 0;
         }
         catch (Exception error)
@@ -55,16 +56,26 @@ internal static class PackHairShader
     }
 
     [MethodImpl(MethodImplOptions.NoInlining)]
-    private static void BuildBundle(string input, string hlslPath, string output, bool skin)
+    private static void BuildBundle(string input, string hlslPath, string output, bool skin, bool bake)
     {
         var shaderName = skin ? "SkinEffects/BodyCum Skin Projection" : "SkinEffects/Hair Juice Projection";
         var address = skin ? "assets/skineffects/bodycum_skin.shader" : "assets/skineffects/hair_juice.shader";
         var bundleName = skin ? "skineffects_bodycum_skin" : "skineffects_hair_juice";
         // Skin retains its original C9 mask ST. Hair alone adds C9 dimensions and C10 local offsets.
-        var vectors = skin ? HairVectors.Concat(new[] { "_SkinMask_ST" }).ToArray() :
+        var vectors = skin ? HairVectors.Concat(new[] { "_SkinMask_ST", "_InnerBustGain" }).ToArray() :
             HairVectors.Concat(new[] { "_HairProjectionDimensions", "_HairProjectionOffsets" }).ToArray();
-        var textures = skin ? HairTextures.Concat(new[] { "_SkinMask" }).ToArray() : HairTextures;
+        var textures = HairTextures.Concat(new[] { skin ? "_SkinMask" : "_HairDirectionMask" }).ToArray();
         var sourceCode = File.ReadAllText(hlslPath);
+        if (skin || bake)
+            sourceCode = sourceCode.Replace("#include \"BustPatternWarp.hlsl\"", File.ReadAllText(Path.Combine(Path.GetDirectoryName(hlslPath), "BustPatternWarp.hlsl")));
+        if (bake)
+        {
+            shaderName = "Hidden/BodyCum/BustPatternBake";
+            address = "assets/bodycum/bust_pattern_bake.shader";
+            bundleName = "bodycum_bust_pattern_bake";
+            vectors = new[] { "_BustBakeScale", "_BustBakeTransform" };
+            textures = new[] { "_BustBakeSource" };
+        }
         var vertexCode = Dxbc.Compile("#define HAIR_VERTEX\n" + sourceCode, "vs_4_0");
         var pixelCode = Dxbc.Compile(sourceCode, "ps_4_0");
         using (var original = new UnityParser(input))
@@ -84,7 +95,7 @@ internal static class PackHairShader
                 .Single(p => p.progVertex.m_SubPrograms.Any(s => s.m_BlobIndex == 4));
             var vertex = pass.progVertex.m_SubPrograms.Single(s => s.m_BlobIndex == 4);
             var pixel = pass.progFragment.m_SubPrograms.Single(s => s.m_BlobIndex == 8);
-            if (!skin)
+            if (!skin && !bake)
                 ValidateSurfaceChannels(vertex, vertexCode);
             var vectorType = pixel.m_Parameters.m_ConstantBuffers.First().m_VectorParams.First().m_Type;
             var blob = WritePrograms(GetProgram(raw, 4), GetProgram(raw, 12), vertexCode, pixelCode, vectors, textures);
@@ -106,7 +117,16 @@ internal static class PackHairShader
             SetupPixelBindings(pixel.m_Parameters, names, vectorType, cabinet.VersionNumber, vectors, textures);
             ValidatePixelSamplerBindings(GetProgram(blob, 1), pixel.m_Parameters, names, textures);
 
-            SetOverlayState(pass, skin);
+            SetOverlayState(pass, skin || bake);
+            if (bake)
+            {
+                var state = pass.m_State;
+                state.culling.val = 0;
+                state.zTest.val = 8;
+                state.rtBlend0.srcBlend.val = state.rtBlend0.srcBlendAlpha.val = 1;
+                state.rtBlend0.destBlend.val = state.rtBlend0.destBlendAlpha.val = 0;
+                state.rtBlend0.colMask.val = 15;
+            }
             var subShader = shader.m_ParsedForm.m_SubShaders.Single(s => s.m_Passes.Contains(pass));
             subShader.m_Passes.Clear();
             subShader.m_Passes.Add(pass);
@@ -163,7 +183,7 @@ internal static class PackHairShader
                 packed.m_ParsedForm.m_Name != shaderName || pass.progVertex.m_SubPrograms.Single().m_BlobIndex != 0 ||
                 pass.progFragment.m_SubPrograms.Single().m_BlobIndex != 1)
                 throw new InvalidDataException("Projection shader bundle did not round-trip.");
-            if (!skin)
+            if (!skin && !bake)
                 ValidateSurfaceChannels(pass.progVertex.m_SubPrograms.Single(), vertexCode);
             var readback = LZ4Codec.Decode(packed.compressedBlob, (int)packed.offsets[0],
                 (int)packed.compressedLengths[0], (int)packed.decompressedLengths[0]);
@@ -196,10 +216,10 @@ internal static class PackHairShader
                 throw new InvalidDataException("The projection vertex input signature is invalid.");
             if (Encoding.ASCII.GetString(code, name, end - name) == "TEXCOORD" &&
                 BitConverter.ToInt32(code, entry + 4) == 1 &&
-                (code[entry + 20] & 7) == 7 && (code[entry + 21] & 7) == 7)
+                (code[entry + 20] & 15) == 15 && (code[entry + 21] & 15) == 15)
                 return;
         }
-        throw new InvalidDataException("The projection vertex shader must read TEXCOORD1.xyz.");
+        throw new InvalidDataException("The projection vertex shader must read TEXCOORD1.xyzw.");
     }
 
     private static void SetShaderProperties(SerializedShader shader, string[] vectors, string[] textures)

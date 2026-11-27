@@ -50,7 +50,7 @@ namespace BodyCum
             return true;
         }
 
-        internal byte[] Serialize()
+        internal byte[] Serialize(ChaControl character)
         {
             using (var stream = new MemoryStream())
             using (var writer = new BinaryWriter(stream))
@@ -62,7 +62,10 @@ namespace BodyCum
                 foreach (var entry in Slots)
                 {
                     writer.Write((byte)entry.Key);
-                    writer.Write(entry.Value);
+                    // Old versions expect the identity in this record. Store the current one if loaded.
+                    var asset = ClothesJuiceParts.TryGet(character, entry.Key, out _, out var current)
+                        ? current : entry.Value;
+                    writer.Write(asset);
                 }
                 return stream.ToArray();
             }

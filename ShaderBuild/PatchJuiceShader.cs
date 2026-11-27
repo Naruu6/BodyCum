@@ -11,7 +11,7 @@ internal static class PatchJuiceShader
     private const string PropertyName = "_SkinEffectsJuiceColor";
     private const string DensityPropertyName = "_SkinEffectsJuiceDensity";
     private const int OriginalGlobalsSize = 36 * 16;
-    private const int PatchedGlobalsSize = OriginalGlobalsSize + 32;
+    private const int PatchedGlobalsSize = OriginalGlobalsSize + 48;
     private const int DefaultVariant = 8;
     private const int ScreenShadowVariant = 9;
 
@@ -85,7 +85,7 @@ internal static class PatchJuiceShader
         var oldShader = new byte[oldShaderSize];
         Buffer.BlockCopy(data, shaderOffset, oldShader, 0, oldShader.Length);
         var newShader = Dxbc.EditProgram(oldShader, program => InjectInstructions(program, screenShadows));
-        Check(Dxbc.Disassemble(newShader).Contains("dcl_constantbuffer CB0[38], immediateIndexed"),
+        Check(Dxbc.Disassemble(newShader).Contains("dcl_constantbuffer CB0[39], immediateIndexed"),
             "Could not validate patched Direct3D instructions.");
 
         int uniformsStart = Align4(shaderOffset + oldShaderSize);
@@ -112,10 +112,11 @@ internal static class PatchJuiceShader
             writer.Write(newShader);
             writer.Write(data, shaderOffset + oldShaderSize, sizeOffset - shaderOffset - oldShaderSize);
             writer.Write(PatchedGlobalsSize);
-            writer.Write(parameterCount + 2);
+            writer.Write(parameterCount + 3);
             writer.Write(data, countOffset + 4, parameterEnd - countOffset - 4);
             WriteVectorParameter(writer, PropertyName, OriginalGlobalsSize);
             WriteVectorParameter(writer, DensityPropertyName, OriginalGlobalsSize + 16);
+            WriteVectorParameter(writer, "_BodyCumBustWarp", OriginalGlobalsSize + 32);
             writer.Write(data, parameterEnd, data.Length - parameterEnd);
             return result.ToArray();
         }
@@ -140,16 +141,13 @@ internal static class PatchJuiceShader
             program[colorOffset] == 0x0F000032 && program[colorOffset + 7] == 0x3EB33334 &&
             program[colorOffset + 15] == 0x09000032,
             "Unexpected Direct3D instruction layout.");
-        program[5] = 38;
+        program[5] = 39;
         program[tempCountOffset] = 13 + AbdomenJuiceMask.TemporaryCount;
 
         var result = new List<uint>(program.Length + 80);
         var nativeSample = AbdomenJuiceMask.FindNativeSample(program, 3, screenShadows ? 10u : 9u, normalWeightOffset);
-        result.AddRange(program.Take(nativeSample.Start));
-        AbdomenJuiceMask.SaveShiftedSample(result, program, nativeSample, 37, 13);
-        result.AddRange(program.Skip(nativeSample.Start).Take(nativeSample.End - nativeSample.Start));
-        AbdomenJuiceMask.SaveNativeSample(result, nativeSample, 13);
-        result.AddRange(program.Skip(nativeSample.End).Take(normalWeightOffset - nativeSample.End));
+        var liquidEnd = AbdomenJuiceMask.EmitBodyPattern(result, program, nativeSample, 37, 13);
+        result.AddRange(program.Skip(liquidEnd).Take(normalWeightOffset - liquidEnd));
         var coverage = AbdomenJuiceMask.ExtendCoverage(result, 37, 13);
 
         // Preserve native slopes at the edge. Choose native coverage exactly when density is zero.

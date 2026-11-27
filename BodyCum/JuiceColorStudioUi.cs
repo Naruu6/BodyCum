@@ -45,7 +45,7 @@ namespace BodyCum
         internal const float RowHeight = 24f;
         private const float ColorPanelHeight = 6 * RowHeight;
         private const float AttachmentPanelStart = ColorPanelHeight + RowHeight;
-        private const float PanelHeight = AttachmentPanelStart + HairJuiceStudioControls.Height + ClothesJuiceStudioControls.Height + 4f;
+        private const float PanelHeight = AttachmentPanelStart + 2 * HairJuiceStudioControls.Height + ClothesJuiceStudioControls.Height + 4f;
 
         private OCIChar _character;
         private RectTransform _panel;
@@ -72,6 +72,7 @@ namespace BodyCum
         private Button _allSlots;
         private Text _allSlotsText;
         private HairJuiceStudioControls _hair;
+        private HairJuiceStudioControls _regularHair;
         private ClothesJuiceStudioControls _clothes;
         private bool _refreshing;
 
@@ -107,10 +108,11 @@ namespace BodyCum
             _brightness = SliderRow(_panel, "Brightness", 5, 0, 200, SetBrightness, out _brightnessValue);
 
             Label(_panel, "All slots", 0f, ColorPanelHeight, 85f);
-            _allSlots = PushButton(_panel, "Toggle all accessory and clothes slots", 90f, ColorPanelHeight, 116f, ToggleAllSlots);
+            _allSlots = PushButton(_panel, "Toggle all hair, accessory and clothes slots", 90f, ColorPanelHeight, 116f, ToggleAllSlots);
             _allSlotsText = HairJuiceStudioControls.LabelButton(this, _allSlots, "All ON", 0f, 116f);
-            _hair = new HairJuiceStudioControls(this, _panel, AttachmentPanelStart);
-            _clothes = new ClothesJuiceStudioControls(this, _panel, AttachmentPanelStart + HairJuiceStudioControls.Height);
+            _regularHair = new HairJuiceStudioControls(this, _panel, AttachmentPanelStart, true);
+            _hair = new HairJuiceStudioControls(this, _panel, AttachmentPanelStart + HairJuiceStudioControls.Height, false);
+            _clothes = new ClothesJuiceStudioControls(this, _panel, AttachmentPanelStart + 2 * HairJuiceStudioControls.Height);
             RefreshPower();
             LayoutRebuilder.MarkLayoutForRebuild((RectTransform)transform.parent);
         }
@@ -233,6 +235,7 @@ namespace BodyCum
                 ClosePalette();
             _character = character;
             RefreshPower();
+            _regularHair?.Select(character);
             _hair?.Select(character);
             _clothes?.Select(character);
             Refresh();
@@ -242,6 +245,7 @@ namespace BodyCum
         {
             RefreshPower();
             Refresh();
+            _regularHair?.Select(_character);
             _hair?.Select(_character);
             _clothes?.Select(_character);
         }
@@ -303,6 +307,7 @@ namespace BodyCum
             if (feature == null || !feature.TryGetAllSlotSelection(_character, out var selected))
                 return;
             feature.SetAllSlots(_character, !selected);
+            _regularHair.Select(_character);
             _hair.Select(_character);
             _clothes.Select(_character);
             RefreshAllSlots();

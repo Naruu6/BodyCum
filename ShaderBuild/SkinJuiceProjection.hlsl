@@ -32,7 +32,7 @@ SkinFragment main(SkinVertex input) {
 cbuffer SkinProjectionParams : register(b0) {
     // These two slots retain the overlay packer's common property names.
     float4 _HairProjectionX : packoffset(c0);  // Front upper/lower, back upper/lower.
-    float4 _HairProjectionY : packoffset(c1);  // Face tier, Belly tier.
+    float4 _HairProjectionY : packoffset(c1);  // Face, Belly, bust U and V scale gains.
     float4 _HairJuiceColor : packoffset(c3);
     float4 _HairJuiceParams : packoffset(c4);
     float4 _HairSourceTex_ST : packoffset(c5);
@@ -40,6 +40,7 @@ cbuffer SkinProjectionParams : register(b0) {
     float4 _HairAlphaParams : packoffset(c7);
     float4 _HairPatternTex_ST : packoffset(c8);
     float4 _SkinMask_ST : packoffset(c9);
+    float4 _InnerBustGain : packoffset(c10);
 };
 Texture2D _HairSourceTex : register(t0);
 Texture2D _HairAlphaTex : register(t1);
@@ -49,6 +50,8 @@ SamplerState sampler_HairSourceTex : register(s0);
 SamplerState sampler_HairAlphaTex : register(s1);
 SamplerState sampler_HairPatternTex : register(s2);
 SamplerState sampler_SkinMask : register(s3);
+
+#include "BustPatternWarp.hlsl"
 
 float NativeCoverage(float2 pattern, float3 mask) {
     // RGB encode front upper/lower and back upper, yellow encodes back lower, cyan the face.
@@ -104,9 +107,16 @@ float4 main(SkinFragment input) : SV_Target {
     clip(sourceAlpha - max(.003, _HairJuiceParams.w));
 
     float2 patternUv = input.uv * _HairPatternTex_ST.xy + _HairPatternTex_ST.zw;
+    float2 bustGain = _HairProjectionY.zw;
     float2 pattern = _HairPatternTex.Sample(sampler_HairPatternTex, patternUv).rg;
+    float2 nativePattern = pattern;
+    if (any(bustGain > 0.0)) {
+        float2 bustUv = WarpBustUv(input.uv, bustGain, _InnerBustGain.xy) * _HairPatternTex_ST.xy + _HairPatternTex_ST.zw;
+        float2 corrected = _HairPatternTex.Sample(sampler_HairPatternTex, bustUv).rg;
+        nativePattern = lerp(pattern, corrected, BustWarpWeight(input.uv));
+    }
     float3 mask = _SkinMask.Sample(sampler_SkinMask, input.uv * _SkinMask_ST.xy + _SkinMask_ST.zw).rgb;
-    float coverage = NativeCoverage(pattern, mask);
+    float coverage = NativeCoverage(nativePattern, mask);
     float bellyTier = _HairProjectionY.y;
     if (bellyTier > 0.0) {
         float2 shifted = _HairPatternTex.Sample(sampler_HairPatternTex, patternUv - float2(.084, .096)).rg;

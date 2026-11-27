@@ -16,6 +16,7 @@ internal static class PackSkinShader
 {
     private const string JuiceVector = "_SkinEffectsJuiceColor";
     private const string DensityVector = "_SkinEffectsJuiceDensity";
+    private const string BustWarpVector = "_BodyCumBustWarp";
     private const long ShaderPathId = 2L;
     private const long LocalFallbackPathId = 3L;
     private const uint Direct3D11 = 4;
@@ -218,6 +219,7 @@ internal static class PackSkinShader
         var vector = properties.Single(p => p.m_Name == "_LiquidTiling");
         properties.Add(CreateVectorProperty(vector, JuiceVector, "SkinEffects Custom Juice Color", 245f / 255f, 243f / 255f, 235f / 255f, .9f));
         properties.Add(CreateVectorProperty(vector, DensityVector, "SkinEffects Juice Density", 0f, 0f, 0f, 0f));
+        properties.Add(CreateVectorProperty(vector, BustWarpVector, "BodyCum bust pattern stretch", 0f, 0f, 0f, 0f));
         var modifiedPrograms = ReadModifiedPrograms(originalBlob, blob);
         var liquidPrograms = new HashSet<int>();
         foreach (var pass in parsed.m_SubShaders.SelectMany(p => p.m_Passes))
@@ -234,6 +236,7 @@ internal static class PackSkinShader
             var nameIndex = pass.m_NameIndices.Max(p => p.Value) + 1;
             pass.m_NameIndices.Add(new KeyValuePair<string, int>(JuiceVector, nameIndex));
             pass.m_NameIndices.Add(new KeyValuePair<string, int>(DensityVector, nameIndex + 1));
+            pass.m_NameIndices.Add(new KeyValuePair<string, int>(BustWarpVector, nameIndex + 2));
             pass.m_NameIndices.Sort((left, right) => StringComparer.Ordinal.Compare(left.Key, right.Key));
             var globalsIndex = pass.m_NameIndices.Single(p => p.Key == "$Globals").Value;
             var tilingIndex = pass.m_NameIndices.Single(p => p.Key == "_LiquidTiling").Value;
@@ -244,8 +247,10 @@ internal static class PackSkinShader
                 var globals = program.m_Parameters.m_ConstantBuffers.Single(b => b.m_NameIndex == globalsIndex);
                 VerifyVectorParameter(blob, index, globals.m_Size, JuiceVector);
                 VerifyVectorParameter(blob, index, globals.m_Size + 16, DensityVector);
+                VerifyVectorParameter(blob, index, globals.m_Size + 32, BustWarpVector);
                 AddVectorParameter(globals, tilingIndex, nameIndex);
                 AddVectorParameter(globals, tilingIndex, nameIndex + 1);
+                AddVectorParameter(globals, tilingIndex, nameIndex + 2);
             }
         }
         if (liquidPrograms.Count != spec.LiquidProgramCount || !liquidPrograms.SetEquals(modifiedPrograms))
@@ -395,6 +400,7 @@ internal static class PackSkinShader
                 address.Value.asset.m_PathID != ShaderPathId || address.Value.preloadSize != expectedCount - 1 ||
                 shader.m_ParsedForm.m_Name != spec.CustomName || shader.m_ParsedForm.m_PropInfo.m_Props.Any(p => p.m_Name == JuiceVector) != hasPatch ||
                 shader.m_ParsedForm.m_PropInfo.m_Props.Any(p => p.m_Name == DensityVector) != hasPatch ||
+                shader.m_ParsedForm.m_PropInfo.m_Props.Any(p => p.m_Name == BustWarpVector) != hasPatch ||
                 !shader.compressedBlob.SequenceEqual(blob))
                 throw new InvalidDataException("Round-trip validation of the standalone asset bundle failed.");
             if (fallback != null)

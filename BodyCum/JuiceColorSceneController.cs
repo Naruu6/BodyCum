@@ -46,10 +46,13 @@ namespace BodyCum
                 var profile = hair.Get(character);
                 if (profile != null && profile.HasValues)
                     data.data[HairKey(entry.Key)] = profile.Serialize();
+                var regularHair = hair.GetHairProfile(character, true);
+                if (regularHair != null && regularHair.HasValues)
+                    data.data[RegularHairKey(entry.Key)] = regularHair.Serialize();
                 var clothes = hair.GetClothes(character);
                 if (clothes != null && clothes.HasValues)
                 {
-                    data.data[ClothesKey(entry.Key)] = clothes.Serialize();
+                    data.data[ClothesKey(entry.Key)] = clothes.Serialize(character.charInfo);
                     if (clothes.Level == 2)
                         data.data[ClothesLevelKey(entry.Key)] = new byte[] { 2 };
                     if (clothes.HasTransform)
@@ -105,6 +108,12 @@ namespace BodyCum
                     if (profile != null)
                         hair.Set(character, profile);
                 }
+                if (data.data.TryGetValue(RegularHairKey(entry.Key), out value) && value is byte[] regularHairData)
+                {
+                    var profile = HairJuiceProfile.Deserialize(regularHairData);
+                    if (profile != null)
+                        hair.SetRegularHair(character, profile);
+                }
                 ClothesJuiceProfile clothes = null;
                 if (data.data.TryGetValue(ClothesKey(entry.Key), out value) && value is byte[] clothesData)
                     clothes = ClothesJuiceProfile.Deserialize(clothesData);
@@ -149,6 +158,9 @@ namespace BodyCum
                 var profile = hair.Get(character);
                 if (profile != null)
                     hair.Set(copy, profile.Copy());
+                var regularHair = hair.GetHairProfile(character, true);
+                if (regularHair != null)
+                    hair.SetRegularHair(copy, regularHair.Copy());
                 var clothes = hair.GetClothes(character);
                 if (clothes != null)
                     hair.SetClothes(copy, clothes.Copy());
@@ -177,6 +189,7 @@ namespace BodyCum
         private static string TongueKey(int id) => Key(id) + ".tongue";
 
         private static string HairKey(int id) => Key(id) + ".hair";
+        private static string RegularHairKey(int id) => Key(id) + ".regularHair";
 
         private static string ClothesKey(int id) => Key(id) + ".clothes";
         private static string ClothesLevelKey(int id) => Key(id) + ".clothesLevel";
