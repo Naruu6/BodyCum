@@ -1,14 +1,16 @@
-# Rendering sources
+# Rendering resources
 
-BodyCum reads the installed game's live body mask at runtime. The 1.0.0 DLL embeds the following rendering resources.
+BodyCum reads the body mask from the installed game while Studio is running. The 1.0 DLL also ships with the following resources.
 
-| Resource | Input |
+| Resource | Where it comes from |
 | --- | --- |
-| `CustomJuiceColor.bundle` | Native Koikatsu skin shader data |
-| `CustomJuiceColor.KKUTS_Tess.bundle` | nHaruka's KKUTS v2.3 tessellation shader data |
-| `CustomJuiceColor.Hair.bundle` | BodyCum projection HLSL and the Unity 5.6 shader serialization template |
-| `CustomJuiceColor.Skin.bundle` | BodyCum skin projection HLSL and the Unity 5.6 shader serialization template |
-| `CustomJuiceColor.BustBake.bundle` | BodyCum pattern remapping HLSL and the Unity 5.6 shader serialization template |
-| `HairDirectionRegions.png` | BodyCum region lookup for two rotated portions of the regular body mask |
+| `CustomJuiceColor.bundle` | Modified native Koikatsu skin shader data |
+| `CustomJuiceColor.KKUTS_Tess.bundle` | Modified tessellation shader data from [nHaruka's KKUTS v2.3](https://ux.getuploader.com/nHaruka_KK/download/150) |
+| `CustomJuiceColor.Hair.bundle` | BodyCum projection HLSL packaged with the Unity 5.6 shader serialization template |
+| `CustomJuiceColor.Skin.bundle` | BodyCum skin projection HLSL packaged with the Unity 5.6 shader serialization template |
+| `CustomJuiceColor.BustBake.bundle` | BodyCum pattern remapping HLSL packaged with the Unity 5.6 shader serialization template |
+| `HairDirectionRegions.png` | BodyCum lookup image for two rotated regions of the body mask |
 
-The exact hashes and sizes are recorded in [resource-hashes.json](../resource-hashes.json). See the [build guide](BUILD.md) for generating or importing the resources and [third-party notices](../THIRD-PARTY-NOTICES.md) for credit and licensing information.
+The game and KKUTS shader data carry their own terms. Redistribution permission for the modified bundles has yet to be verified.
+
+See [resource-hashes.json](../resource-hashes.json) for file sizes and checksums, or the [build guide](BUILD.md) for the local build steps.

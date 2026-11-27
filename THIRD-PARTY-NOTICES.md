@@ -1,22 +1,13 @@
-# Credits and third-party materials
+# Credits and licenses
 
-## Source code
+BodyCum is based on ManlyMarco's [Illusion_SkinEffects 3.0.2](https://github.com/ManlyMarco/Illusion_SkinEffects/tree/v3.0.2). BodyCum packages the modified Juices controls as a standalone plugin. This version was released on November 27, 2026. The code is available under [GPL-3.0](LICENSE), and the original copyright notices still apply.
 
-BodyCum was separated from a modified integration based on ManlyMarco's [Illusion_SkinEffects 3.0.2](https://github.com/ManlyMarco/Illusion_SkinEffects). The original [GNU GPL version 3 license](LICENSE) is retained. Original copyrights remain with their respective holders.
+## Tools and dependencies
 
-## Build and runtime components
+BodyCum runs on Koikatsu CharaStudio with [BepInEx](https://github.com/BepInEx/BepInEx), [KKAPI](https://github.com/IllusionMods/IllusionModdingAPI), and [Extended Save](https://github.com/IllusionMods/BepisPlugins). The build tools use Microsoft Roslyn and SB3Utility. Install those tools and dependencies separately under their own terms.
 
-BodyCum uses a separately installed copy of Koikatsu CharaStudio and these tools and plugins.
+## Shaders and artwork
 
-- [BepInEx](https://github.com/BepInEx/BepInEx)
-- [Illusion Modding API / KKAPI](https://github.com/IllusionMods/IllusionModdingAPI)
-- [BepisPlugins / Extended Save](https://github.com/IllusionMods/BepisPlugins)
-- Unity and Koikatsu assemblies
-- SB3Utility for building shader bundles
-- Microsoft Roslyn or the .NET SDK for compiling the plugin
+The 1.0 DLL embeds shader data derived from Koikatsu and [nHaruka's KKUTS v2.3](https://ux.getuploader.com/nHaruka_KK/download/150). The redistribution terms for those builds are unverified. See [Rendering resources](docs/ASSET-PROVENANCE.md) for the exact files and their sources.
 
-## Rendering resources and artwork
-
-The rendering inputs include material from the installed game and [nHaruka's KKUTS v2.3](https://ux.getuploader.com/nHaruka_KK/download/150). See [Rendering sources](docs/ASSET-PROVENANCE.md) for the resource list and its corresponding build inputs. The source-code license covers the BodyCum source. Third-party materials retain their own terms.
-
-The repository cover uses generated artwork and Gorvex lettering. The typeface remains subject to its own terms.
+The cover uses generated artwork and Gorvex lettering. The typeface is covered by [the font publisher's license](https://www.myfonts.com/products/regular-gorvex-1215162/licenses).

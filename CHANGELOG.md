@@ -2,12 +2,11 @@
 
 ## 1.0.0
 
-- Reduced the horizontal pattern offset on overlapping hair accessory strands to one quarter of its previous value. This keeps the result closer to the frontal placement.
-- Hair and accessory patterns first appear when surface placement is ready. Existing scene coordinates are reused when the mesh matches.
-- Clothing slot selections follow the slot when its item changes. Stock bras and underwear use the original material's two-channel cutout rules. BodyCum controls the displayed clothing effect while the F1 master switch is enabled.
-- Regular hair, accessories, and clothing each have OFF, x1, and x2 levels. Their position and size controls are stored per character in the scene.
-- The established BodyCum ID and scene data remain compatible with earlier versions.
+- Overlapping strands on hair accessories get a small sideways shift so the pattern stays close to the original frontal placement.
+- Hair effects appear after their placement settles. If the scene has a saved placement for the same mesh, BodyCum uses it again.
+- Clothing settings follow the slot when you change outfits. Stock underwear uses its original cutout mask. While the F1 master switch is on, BodyCum handles the clothing effect.
+- Regular hair, accessories, and clothes each have **Off**, **x1**, and **x2**. Slot selections, position, and size are saved for each character.
 
-The release was verified in CharaStudio with two long-hair accessories. The tests covered character loading and replacement, restoration of saved placement, and the absence of a second pattern shift after the effect first appeared.
+CharaStudio tests covered character loading, card swaps, and saved placement with two long-hair accessories.
 
-Plugin version `1.0.0`. Assembly and file version `1.0.0.0`. Plugin ID `koikatsu.bodycum`.
+The plugin ID is `koikatsu.bodycum`. The plugin version is `1.0.0` and the DLL file version is `1.0.0.0`.
